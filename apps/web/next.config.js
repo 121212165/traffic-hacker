@@ -44,6 +44,9 @@ module.exports = withPlausibleProxy({
     ],
   },
   experimental: {
+    // White-label fork deploy: reduce webpack peak memory to avoid OOM SIGKILL
+    // on the constrained (8 GB) Vercel build container during `next build`.
+    webpackMemoryOptimizations: true,
     optimizePackageImports: [
       "@dub/email",
       "@dub/ui",
@@ -70,6 +73,21 @@ module.exports = withPlausibleProxy({
       ...config.module,
       exprContextCritical: false,
     };
+
+    // Serialize webpack work to cap peak RAM (avoids build-container OOM).
+    config.parallelism = 1;
+    config.cache = false;
+    if (config.optimization) {
+      config.optimization.minimize = true;
+      // Single minifier thread keeps memory bounded on the build machine.
+      if (Array.isArray(config.optimization.minimizer)) {
+        for (const m of config.optimization.minimizer) {
+          if (m && m.options && typeof m.options === "object") {
+            m.options.parallel = false;
+          }
+        }
+      }
+    }
 
     return config;
   },
