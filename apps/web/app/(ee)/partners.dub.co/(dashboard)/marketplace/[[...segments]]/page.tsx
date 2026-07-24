@@ -6,8 +6,12 @@ import {
 
 export { revalidate };
 
+// White-label fork deploy: render on-demand so the build does not prerender
+// marketplace pages that read from a (possibly unreachable) database.
+export const dynamic = "force-dynamic";
+
 export async function generateStaticParams() {
-  return generateMarketplaceProgramStaticParams();
+  return [];
 }
 
 export default async function MarketplacePage(props: {

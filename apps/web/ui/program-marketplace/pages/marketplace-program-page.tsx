@@ -19,16 +19,22 @@ import { getMarketplaceHref } from "../utils/urls";
 export const revalidate = 3600; // 1 hour
 
 export async function generateMarketplaceProgramStaticParams() {
-  const programs = await prisma.program.findMany({
-    where: {
-      addedToMarketplaceAt: {
-        not: null,
+  let programs: { slug: string }[] = [];
+  try {
+    programs = await prisma.program.findMany({
+      where: {
+        addedToMarketplaceAt: {
+          not: null,
+        },
       },
-    },
-    select: {
-      slug: true,
-    },
-  });
+      select: {
+        slug: true,
+      },
+    });
+  } catch {
+    // White-label fork deploy: DB may be unreachable during `next build`.
+    // Skip pre-rendering program pages; they render on-demand at runtime.
+  }
 
   const categoryPages = Object.values(Category).map((category) => ({
     segments: ["c", category.toLowerCase()],
