@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:720px; overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  body {
+    background:radial-gradient(1200px 700px at 50% 35%, #12351f 0%, #0a0e14 55%, #05070b 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#e8f5ec; position:relative;
+  }
+  .grid {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(34,224,122,.06) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(34,224,122,.06) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(720px 520px at 50% 45%,#000,transparent 80%);
+  }
+  .glow { position:absolute; top:150px; left:50%; transform:translateX(-50%);
+    width:560px; height:220px; background:#22e07a; filter:blur(140px); opacity:.32; }
+  .content { position:relative; z-index:2; text-align:center; }
+  .tags { display:flex; gap:14px; justify-content:center; margin-bottom:34px; }
+  .tag { padding:9px 20px; border:1px solid rgba(34,224,122,.35); border-radius:999px;
+    font-size:16px; color:#bff3d3; background:rgba(34,224,122,.06); }
+  h1 { font-size:64px; font-weight:800; line-height:1.15; margin-bottom:20px;
+    background:linear-gradient(90deg,#ffffff,#8bf5b6); -webkit-background-clip:text;
+    background-clip:text; color:transparent; text-shadow:0 6px 40px rgba(34,224,122,.25); }
+  .sub { font-size:24px; opacity:.72; font-weight:300; letter-spacing:1px; margin-bottom:44px; }
+  .cta { display:flex; gap:18px; justify-content:center; align-items:center; }
+  .btn { padding:16px 34px; border-radius:12px; font-size:19px; font-weight:700; }
+  .primary { background:#22e07a; color:#05261a; box-shadow:0 12px 40px rgba(34,224,122,.35); }
+  .ghost { border:1px solid rgba(34,224,122,.4); color:#bff3d3; }
+  .en { font:700 22px "JetBrains Mono",Consolas,monospace; letter-spacing:5px;
+    color:#22e07a; margin-top:40px; opacity:.9; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="glow"></div>
+  <div class="content">
+    <div class="tags">
+      <div class="tag">🔓 开源</div>
+      <div class="tag">🏠 自建自控</div>
+      <div class="tag">▲ 一键部署 Vercel</div>
+    </div>
+    <h1>让你的增长数据<br>真正属于你</h1>
+    <div class="sub">流量黑客 · 短链归因平台</div>
+    <div class="cta">
+      <div class="btn primary">立即部署</div>
+      <div class="btn ghost">查看源码</div>
+    </div>
+    <div class="en">TrafficHacker</div>
+  </div>
+</body>
+</html>

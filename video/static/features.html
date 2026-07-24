@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:720px; overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  body {
+    background:radial-gradient(1200px 700px at 50% 25%, #12351f 0%, #0a0e14 55%, #05070b 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#e8f5ec; position:relative;
+  }
+  .grid {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(34,224,122,.06) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(34,224,122,.06) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(760px 520px at 50% 45%,#000,transparent 80%);
+  }
+  .content { position:relative; z-index:2; text-align:center; width:1080px; }
+  .kicker { font:700 18px "JetBrains Mono",Consolas,monospace; letter-spacing:3px;
+    color:#22e07a; margin-bottom:20px; opacity:.9; }
+  .kicker::before { content:"▎"; color:#22e07a; }
+  h1 { font-size:52px; font-weight:800; letter-spacing:1px; line-height:1.15;
+    color:#ffffff; margin-bottom:48px; }
+  h1 .hl { color:#22e07a; }
+  .cards { display:flex; gap:24px; justify-content:center; }
+  .card { flex:1; padding:34px 26px; border-radius:18px;
+    background:linear-gradient(180deg,rgba(34,224,122,.08),rgba(34,224,122,.02));
+    border:1px solid rgba(34,224,122,.3); text-align:left; position:relative; }
+  .num { position:absolute; top:20px; right:22px;
+    font:700 22px "JetBrains Mono",Consolas,monospace; color:rgba(34,224,122,.35); }
+  .icon { font-size:38px; margin-bottom:18px; }
+  .ct { font-size:26px; font-weight:700; color:#ffffff; margin-bottom:12px; }
+  .cd { font-size:16px; opacity:.65; line-height:1.65; font-weight:300; }
+  .arrow { display:flex; align-items:center; color:#22e07a; font-size:30px; opacity:.5; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="content">
+    <div class="kicker">ALL-IN-ONE</div>
+    <h1>三件事，<span class="hl">一个看板全搞定</span></h1>
+    <div class="cards">
+      <div class="card">
+        <div class="num">01</div>
+        <div class="icon">🔗</div>
+        <div class="ct">短链管理</div>
+        <div class="cd">品牌短链、自定义域名、二维码与标签，集中创建、集中分发。</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="card">
+        <div class="num">02</div>
+        <div class="icon">🎯</div>
+        <div class="ct">UTM 追踪</div>
+        <div class="cd">自动携带 UTM 参数，点击实时入库，地域设备来源一目了然。</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="card">
+        <div class="num">03</div>
+        <div class="icon">📊</div>
+        <div class="ct">转化归因</div>
+        <div class="cd">从点击到付费全链路打通，每个渠道的真实贡献看得清清楚楚。</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

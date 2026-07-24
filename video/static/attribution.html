@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:720px; overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  body {
+    background:radial-gradient(1200px 700px at 50% 20%, #12351f 0%, #0a0e14 55%, #05070b 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#e8f5ec; position:relative;
+  }
+  .grid {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(34,224,122,.06) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(34,224,122,.06) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(800px 560px at 50% 45%,#000,transparent 80%);
+  }
+  .content { position:relative; z-index:2; text-align:center; width:1120px; }
+  .kicker { font:700 18px "JetBrains Mono",Consolas,monospace; letter-spacing:3px;
+    color:#22e07a; margin-bottom:18px; }
+  .kicker::before { content:"▎"; color:#22e07a; }
+  h1 { font-size:52px; font-weight:800; color:#fff; margin-bottom:50px; }
+  h1 .hl { color:#22e07a; }
+  .funnel { display:flex; align-items:center; justify-content:center; gap:0; }
+  .stage { width:250px; padding:26px 20px; text-align:center; }
+  .stage .lbl { font-size:20px; font-weight:700; color:#fff; margin-bottom:12px; }
+  .stage .val { font:800 40px "JetBrains Mono",Consolas,monospace; color:#22e07a; }
+  .stage .rate { font-size:14px; opacity:.5; margin-top:8px; }
+  .bar-wrap { width:210px; height:88px; border-radius:12px; margin:0 auto 16px;
+    display:flex; align-items:flex-end; justify-content:center; overflow:hidden; }
+  .fill { width:100%; background:linear-gradient(180deg,rgba(34,224,122,.5),rgba(34,224,122,.12));
+    border-top:2px solid #22e07a; }
+  .arrow { color:#22e07a; font-size:34px; opacity:.55; margin:0 -6px 44px; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="content">
+    <div class="kicker">FULL-FUNNEL ATTRIBUTION</div>
+    <h1>从点击到付费，<span class="hl">全链路归因</span></h1>
+    <div class="funnel">
+      <div class="stage">
+        <div class="bar-wrap"><div class="fill" style="height:100%"></div></div>
+        <div class="lbl">点击</div>
+        <div class="val">12.4k</div>
+        <div class="rate">100%</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage">
+        <div class="bar-wrap"><div class="fill" style="height:52%"></div></div>
+        <div class="lbl">注册</div>
+        <div class="val">2,180</div>
+        <div class="rate">转化 17.6%</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage">
+        <div class="bar-wrap"><div class="fill" style="height:22%"></div></div>
+        <div class="lbl">付费</div>
+        <div class="val">396</div>
+        <div class="rate">付费率 18.2%</div>
+      </div>
+      <div class="arrow">→</div>
+      <div class="stage">
+        <div class="bar-wrap"><div class="fill" style="height:34%"></div></div>
+        <div class="lbl">收入归因</div>
+        <div class="val">¥58k</div>
+        <div class="rate">按渠道拆分</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

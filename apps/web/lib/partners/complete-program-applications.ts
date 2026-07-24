@@ -1,0 +1,276 @@
+import { prisma } from "@/lib/prisma";
+import { APP_DOMAIN_WITH_NGROK } from "@dub/utils";
+import { PlatformType, Prisma } from "@prisma/client";
+import { createId } from "../api/create-id";
+import { detectAndRecordFraudApplication } from "../api/fraud/detect-record-fraud-application";
+import { notifyPartnerApplication } from "../api/partners/notify-partner-application";
+import { markApplicationEventSubmitted } from "../application-events/update-application-event";
+import { qstash } from "../cron";
+import { buildSocialPlatformLookup } from "../social-utils";
+import { sendWorkspaceWebhook } from "../webhook/publish";
+import { partnerApplicationWebhookSchema } from "../zod/schemas/program-application";
+import { evaluateApplicationRequirements } from "./evaluate-application-requirements";
+import {
+  formatApplicationFormData,
+  formatWebsiteAndSocialsFields,
+} from "./format-application-form-data";
+
+/**
+ * Completes any outstanding program applications for a user
+ * by creating a program enrollment for each
+ */
+export async function completeProgramApplications(userEmail: string) {
+  try {
+    const user = await prisma.user.findUniqueOrThrow({
+      where: { email: userEmail },
+      select: {
+        partners: {
+          select: {
+            partnerId: true,
+            partner: {
+              include: {
+                platforms: true,
+                programs: {
+                  select: {
+                    programId: true,
+                    tenantId: true,
+                    status: true,
+                    groupId: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!user.partners.length) {
+      return;
+    }
+
+    const programApplications = await prisma.programApplication.findMany({
+      where: {
+        email: userEmail,
+        enrollment: null,
+        // Exclude any applications for programs the user is already enrolled in
+        programId: {
+          notIn: user.partners
+            .map((p) => p.partner.programs.map((pp) => pp.programId))
+            .flat(),
+        },
+      },
+      include: {
+        program: true,
+        partnerGroup: true,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+    });
+
+    if (!programApplications.length) {
+      return;
+    }
+
+    // if there are duplicate program applications
+    // pick the latest one for each programId
+    // note: programApplications is already sorted by createdAt desc
+    const seenProgramIds = new Set<string>();
+    const filteredProgramApplications = programApplications.filter(
+      (programApplication) => {
+        if (seenProgramIds.has(programApplication.programId)) {
+          return false;
+        }
+        seenProgramIds.add(programApplication.programId);
+        return true;
+      },
+    );
+
+    const partner = user.partners[0].partner;
+
+    // Program enrollments to create
+    const programEnrollments: Prisma.ProgramEnrollmentCreateManyInput[] =
+      filteredProgramApplications.map((programApplication) => ({
+        id: createId({ prefix: "pge_" }),
+        programId: programApplication.programId,
+        partnerId: user.partners[0].partnerId,
+        applicationId: programApplication.id,
+        groupId: programApplication?.partnerGroup?.id,
+        clickRewardId: programApplication?.partnerGroup?.clickRewardId,
+        leadRewardId: programApplication?.partnerGroup?.leadRewardId,
+        saleRewardId: programApplication?.partnerGroup?.saleRewardId,
+        discountId: programApplication?.partnerGroup?.discountId,
+      }));
+
+    const enrollmentsByApplicationId = new Map(
+      programEnrollments.map((enrollment) => [
+        enrollment.applicationId!,
+        enrollment,
+      ]),
+    );
+
+    await prisma.programEnrollment.createMany({
+      data: programEnrollments,
+      skipDuplicates: true,
+    });
+
+    // Fetch the programs' workspaces
+    const workspaces = await prisma.project.findMany({
+      where: {
+        defaultProgramId: {
+          in: filteredProgramApplications.map((p) => p.programId),
+        },
+      },
+      select: {
+        id: true,
+        defaultProgramId: true,
+        webhookEnabled: true,
+      },
+    });
+
+    // Map workspaces by their defaultProgramId for quick lookup
+    const workspacesByProgramId = new Map(
+      workspaces.map((ws) => [ws.defaultProgramId, ws]),
+    );
+
+    for (const programApplication of filteredProgramApplications) {
+      const application = programApplication;
+      const program = programApplication.program;
+      const group = programApplication.partnerGroup;
+      const programEnrollment = enrollmentsByApplicationId.get(
+        programApplication.id,
+      );
+
+      const socialPlatforms = buildSocialPlatformLookup(partner.platforms);
+
+      const missingSocialFields = {
+        website:
+          application.website && !socialPlatforms.website?.identifier
+            ? application.website
+            : undefined,
+        youtube:
+          application.youtube && !socialPlatforms.youtube?.identifier
+            ? application.youtube
+            : undefined,
+        twitter:
+          application.twitter && !socialPlatforms.twitter?.identifier
+            ? application.twitter
+            : undefined,
+        linkedin:
+          application.linkedin && !socialPlatforms.linkedin?.identifier
+            ? application.linkedin
+            : undefined,
+        instagram:
+          application.instagram && !socialPlatforms.instagram?.identifier
+            ? application.instagram
+            : undefined,
+        tiktok:
+          application.tiktok && !socialPlatforms.tiktok?.identifier
+            ? application.tiktok
+            : undefined,
+      };
+
+      const hasMissingSocialFields = Object.values(missingSocialFields).some(
+        (field) => field !== undefined,
+      );
+
+      const applicationFormData = formatApplicationFormData(application).map(
+        ({ title, value }) => ({
+          label: title,
+          value: value !== "" ? value : null,
+        }),
+      );
+
+      const { valid: validApplication } = evaluateApplicationRequirements({
+        applicationRequirements: program.applicationRequirements,
+        context: {
+          country: partner.country,
+          email: partner.email,
+        },
+      });
+
+      await Promise.allSettled([
+        ...(validApplication
+          ? [
+              notifyPartnerApplication({
+                partner,
+                program,
+                group,
+                application,
+              }),
+
+              // Auto-approve the partner if the group has auto-approval enabled
+              group?.autoApprovePartnersEnabledAt
+                ? qstash.publishJSON({
+                    url: `${APP_DOMAIN_WITH_NGROK}/api/cron/partners/auto-approve`,
+                    body: {
+                      programId: program.id,
+                      partnerId: partner.id,
+                    },
+                  })
+                : Promise.resolve(null),
+
+              // Send "partner.application_submitted" webhook
+              workspacesByProgramId.has(program.id) &&
+                sendWorkspaceWebhook({
+                  workspace: workspacesByProgramId.get(program.id)!,
+                  trigger: "partner.application_submitted",
+                  data: partnerApplicationWebhookSchema.parse({
+                    id: application.id,
+                    createdAt: application.createdAt,
+                    partner: {
+                      ...partner,
+                      ...programEnrollment,
+                      id: partner.id,
+                      status: "pending",
+                      ...formatWebsiteAndSocialsFields(application),
+                    },
+                    applicationFormData,
+                  }),
+                }),
+            ]
+          : [
+              qstash.publishJSON({
+                url: `${APP_DOMAIN_WITH_NGROK}/api/cron/partners/auto-reject`,
+                delay: 5 * 60, // 5 minutes
+                body: {
+                  programId: program.id,
+                  partnerId: partner.id,
+                },
+              }),
+            ]),
+
+        // if the application has any website or social fields but the partner doesn't have the corresponding one (maybe they forgot to add during onboarding)
+        // update the partner to use the website they applied with
+        hasMissingSocialFields &&
+          prisma.partnerPlatform.createMany({
+            data: Object.entries(missingSocialFields)
+              .filter(([, identifier]) => identifier !== undefined)
+              .map(([platform, identifier]) => ({
+                partnerId: partner.id,
+                type: platform as PlatformType,
+                identifier: identifier as string,
+              })),
+            skipDuplicates: true,
+          }),
+
+        // Detect and record fraud events for the partner when they apply to a program
+        detectAndRecordFraudApplication({
+          context: {
+            program,
+            partner,
+          },
+        }),
+      ]);
+    }
+
+    await Promise.allSettled(
+      programEnrollments.map((programEnrollment) =>
+        markApplicationEventSubmitted(programEnrollment),
+      ),
+    );
+  } catch (error) {
+    console.error("Failed to complete program applications", error);
+  }
+}

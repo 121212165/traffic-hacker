@@ -1,0 +1,597 @@
+import { DubApiError } from "@/lib/api/errors";
+import {
+  bulkCreateLinks,
+  checkIfLinksHaveTags,
+  checkIfLinksHaveWebhooks,
+  processLink,
+} from "@/lib/api/links";
+import { bulkDeleteLinks } from "@/lib/api/links/bulk-delete-links";
+import { bulkUpdateLinks } from "@/lib/api/links/bulk-update-links";
+import { includeProgramEnrollment } from "@/lib/api/links/include-program-enrollment";
+import { includeTags } from "@/lib/api/links/include-tags";
+import { throwIfLinksUsageExceeded } from "@/lib/api/links/usage-checks";
+import { checkIfLinksHaveFolders } from "@/lib/api/links/utils/check-if-links-have-folders";
+import { isRootDomainLinkKey } from "@/lib/api/links/utils/is-root-domain-link-key";
+import { combineTagIds } from "@/lib/api/tags/combine-tag-ids";
+import { parseRequestBody } from "@/lib/api/utils";
+import { withWorkspace } from "@/lib/auth";
+import { exceededLimitError } from "@/lib/exceeded-limit-error";
+import {
+  verifyFolderAccess,
+  verifyFolderAccessBulk,
+} from "@/lib/folder/permissions";
+import { prisma } from "@/lib/prisma";
+import { storage } from "@/lib/storage";
+import { NewLinkProps, ProcessedLinkProps } from "@/lib/types";
+import {
+  bulkCreateLinksBodySchema,
+  bulkUpdateLinksBodySchema,
+} from "@/lib/zod/schemas/links";
+import { R2_URL } from "@dub/utils";
+import { waitUntil } from "@vercel/functions";
+import { NextResponse } from "next/server";
+
+// POST /api/links/bulk – bulk create up to 100 links
+export const POST = withWorkspace(
+  async ({ req, headers, session, workspace }) => {
+    if (!workspace) {
+      throw new DubApiError({
+        code: "bad_request",
+        message:
+          "Missing workspace. Bulk link creation is only available for custom domain workspaces.",
+      });
+    }
+
+    throwIfLinksUsageExceeded(workspace);
+
+    const links = bulkCreateLinksBodySchema.parse(await parseRequestBody(req));
+    if (
+      workspace.linksUsage + links.length > workspace.linksLimit &&
+      workspace.plan !== "enterprise" //  don't throw an error for enterprise plans
+    ) {
+      throw new DubApiError({
+        code: "exceeded_limit",
+        message: exceededLimitError({
+          plan: workspace.plan,
+          planPeriod: workspace.planPeriod,
+          limit: workspace.linksLimit,
+          type: "links",
+        }),
+      });
+    }
+
+    // check if any of the links have a defined key and the domain + key combination is the same
+    const duplicates = links.filter(
+      (link, index, self) =>
+        link.key &&
+        self
+          .slice(index + 1)
+          .some((l) => l.domain === link.domain && l.key === link.key),
+    );
+
+    if (duplicates.length > 0) {
+      throw new DubApiError({
+        code: "bad_request",
+        message: `Duplicate links found: ${duplicates
+          .map((link) => `${link.domain}/${link.key}`)
+          .join(", ")}`,
+      });
+    }
+
+    const processedLinks = await Promise.all(
+      links.map(async (link) =>
+        processLink({
+          payload: link,
+          workspace,
+          userId: session.user.id,
+          bulk: true,
+          skipExternalIdChecks: true,
+        }),
+      ),
+    );
+
+    let validLinks = processedLinks
+      .filter(({ error }) => error == null)
+      .map(({ link }) => link) as ProcessedLinkProps[];
+
+    let errorLinks = processedLinks
+      .filter(({ error }) => error != null)
+      .map(({ link, error, code }) => ({
+        link,
+        error,
+        code,
+      }));
+
+    if (checkIfLinksHaveTags(validLinks)) {
+      // filter out tags that don't belong to the workspace
+      const tagIds = validLinks
+        .map((link) =>
+          combineTagIds({ tagId: link.tagId, tagIds: link.tagIds }),
+        )
+        .flat()
+        .filter(Boolean) as string[];
+      const tagNames = validLinks
+        .map((link) => link.tagNames)
+        .flat()
+        .filter(Boolean) as string[];
+
+      const workspaceTags = await prisma.tag.findMany({
+        where: {
+          projectId: workspace.id,
+          ...(tagIds.length > 0 ? { id: { in: tagIds } } : {}),
+          ...(tagNames.length > 0 ? { name: { in: tagNames } } : {}),
+        },
+        select: {
+          id: true,
+          name: true,
+        },
+      });
+
+      const workspaceTagIds = workspaceTags.map(({ id }) => id);
+      const workspaceTagNames = workspaceTags.map(({ name }) =>
+        name.toLowerCase(),
+      );
+
+      validLinks.forEach((link, index) => {
+        const combinedTagIds =
+          combineTagIds({
+            tagId: link.tagId,
+            tagIds: link.tagIds,
+          }) ?? [];
+
+        const invalidTagIds = combinedTagIds.filter(
+          (id) => !workspaceTagIds.includes(id),
+        );
+
+        if (invalidTagIds.length > 0) {
+          // remove link from validLinks and add error to errorLinks
+          validLinks = validLinks.filter((_, i) => i !== index);
+          errorLinks.push({
+            error: `Invalid tagIds detected: ${invalidTagIds.join(", ")}`,
+            code: "unprocessable_entity",
+            link,
+          });
+        }
+
+        const invalidTagNames = link.tagNames?.filter(
+          (name) => !workspaceTagNames.includes(name.toLowerCase()),
+        );
+
+        if (invalidTagNames?.length) {
+          validLinks = validLinks.filter((_, i) => i !== index);
+          errorLinks.push({
+            error: `Invalid tagNames detected: ${invalidTagNames.join(", ")}`,
+            code: "unprocessable_entity",
+            link,
+          });
+        }
+      });
+    }
+
+    if (checkIfLinksHaveFolders(validLinks)) {
+      const folderIds = [
+        ...new Set(
+          validLinks.map((link) => link.folderId).filter(Boolean) as string[],
+        ),
+      ];
+
+      const folderPermissions = await verifyFolderAccessBulk({
+        workspace,
+        userId: session.user.id,
+        folderIds,
+        requiredPermission: "folders.links.write",
+      });
+
+      validLinks = validLinks.filter((link) => {
+        if (!link.folderId) {
+          return true;
+        }
+
+        const validFolder = folderPermissions.find(
+          (folder) => folder.folderId === link.folderId,
+        );
+
+        if (!validFolder) {
+          errorLinks.push({
+            error: `Invalid folderId detected: ${link.folderId}`,
+            code: "unprocessable_entity",
+            link,
+          });
+
+          return false;
+        }
+
+        if (!validFolder.hasPermission) {
+          errorLinks.push({
+            error: `You don't have write access to the folder: ${link.folderId}`,
+            code: "forbidden",
+            link,
+          });
+
+          return false;
+        }
+
+        return true;
+      });
+    }
+
+    if (checkIfLinksHaveWebhooks(validLinks)) {
+      if (workspace.plan === "free" || workspace.plan === "pro") {
+        throw new DubApiError({
+          code: "forbidden",
+          message:
+            "You can only use webhooks on a Business plan and above. Upgrade to Business to use this feature.",
+        });
+      }
+
+      const webhookIds = validLinks
+        .map((link) => link.webhookIds)
+        .flat()
+        .filter(Boolean) as string[];
+
+      const webhooks = await prisma.webhook.findMany({
+        where: { projectId: workspace.id, id: { in: webhookIds } },
+      });
+
+      const workspaceWebhookIds = webhooks.map(({ id }) => id);
+
+      validLinks.forEach((link, index) => {
+        const invalidWebhookIds = link.webhookIds?.filter(
+          (id) => !workspaceWebhookIds.includes(id),
+        );
+        if (invalidWebhookIds && invalidWebhookIds.length > 0) {
+          validLinks = validLinks.filter((_, i) => i !== index);
+          errorLinks.push({
+            error: `Invalid webhookIds detected: ${invalidWebhookIds.join(", ")}`,
+            code: "unprocessable_entity",
+            link,
+          });
+        }
+      });
+    }
+
+    const validLinksResponse =
+      validLinks.length > 0 ? await bulkCreateLinks({ links: validLinks }) : [];
+
+    return NextResponse.json([...validLinksResponse, ...errorLinks], {
+      headers,
+    });
+  },
+  {
+    requiredPermissions: ["links.write"],
+  },
+);
+
+// PATCH /api/links/bulk – bulk update up to 100 links with the same data
+export const PATCH = withWorkspace(
+  async ({ req, workspace, headers, session }) => {
+    const { linkIds, externalIds, data } = bulkUpdateLinksBodySchema.parse(
+      await parseRequestBody(req),
+    );
+
+    if (linkIds.length === 0 && externalIds.length === 0) {
+      return NextResponse.json("No links to update", { headers });
+    }
+
+    let links = await prisma.link.findMany({
+      where: {
+        projectId: workspace.id,
+        ...(linkIds.length > 0
+          ? { id: { in: linkIds } }
+          : { externalId: { in: externalIds } }),
+      },
+    });
+
+    // linkIds that don't exist
+    let errorLinks = linkIds
+      .filter((id) => links.find((link) => link.id === id) === undefined)
+      .map((id) => ({
+        error: "Link not found",
+        code: "not_found",
+        link: { id },
+      }))
+      .concat(
+        externalIds
+          .filter(
+            (id) => links.find((link) => link.externalId === id) === undefined,
+          )
+          .map((id) => ({
+            error: "Link not found",
+            code: "not_found",
+            link: { id },
+          })),
+      );
+
+    let { tagNames, expiresAt, webhookIds } = data;
+    const tagIds = combineTagIds(data);
+
+    // tag checks
+    if (tagIds && tagIds.length > 0) {
+      const tags = await prisma.tag.findMany({
+        select: {
+          id: true,
+        },
+        where: { projectId: workspace?.id, id: { in: tagIds } },
+      });
+
+      if (tags.length !== tagIds.length) {
+        throw new DubApiError({
+          code: "unprocessable_entity",
+          message: `Invalid tagIds detected: ${tagIds.filter((tagId) => tags.find(({ id }) => tagId === id) === undefined).join(", ")}`,
+        });
+      }
+    } else if (tagNames && tagNames.length > 0) {
+      const tags = await prisma.tag.findMany({
+        select: {
+          name: true,
+        },
+        where: {
+          projectId: workspace?.id,
+          name: { in: tagNames },
+        },
+      });
+
+      if (tags.length !== tagNames.length) {
+        throw new DubApiError({
+          code: "unprocessable_entity",
+          message: `Invalid tagNames detected: ${tagNames.filter((tagName) => tags.find(({ name }) => tagName === name) === undefined).join(", ")}`,
+        });
+      }
+    }
+
+    // Webhook checks
+    if (webhookIds && webhookIds.length > 0) {
+      const webhooks = await prisma.webhook.findMany({
+        where: {
+          id: {
+            in: webhookIds,
+          },
+          projectId: workspace.id,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      const invalidWebhookIds = webhookIds.filter(
+        (id) => !webhooks.some((webhook) => webhook.id === id),
+      );
+
+      if (invalidWebhookIds.length > 0) {
+        throw new DubApiError({
+          code: "unprocessable_entity",
+          message: `Invalid webhookIds detected: ${invalidWebhookIds.join(", ")}`,
+        });
+      }
+
+      data.webhookIds = webhooks.map((webhook) => webhook.id);
+    }
+
+    if (data.folderId) {
+      await verifyFolderAccess({
+        workspace,
+        userId: session.user.id,
+        folderId: data.folderId,
+        requiredPermission: "folders.links.write",
+      });
+    }
+
+    if (checkIfLinksHaveFolders(links)) {
+      const folderIds = Array.from(
+        new Set(links.map((link) => link.folderId).filter(Boolean) as string[]),
+      );
+
+      const folderPermissions = await verifyFolderAccessBulk({
+        workspace,
+        userId: session.user.id,
+        folderIds,
+        requiredPermission: "folders.links.write",
+      });
+
+      links = links.filter((link) => {
+        if (!link.folderId) {
+          return true;
+        }
+
+        const validFolder = folderPermissions.find(
+          (folder) => folder.folderId === link.folderId,
+        );
+
+        if (!validFolder?.hasPermission) {
+          errorLinks.push({
+            error: `You don't have permission to update links in this folder: ${link.folderId}`,
+            code: "forbidden",
+            link,
+          });
+
+          return false;
+        }
+
+        return true;
+      });
+    }
+
+    const processedLinks = await Promise.all(
+      links.map(async (link) =>
+        processLink({
+          payload: {
+            ...link,
+            expiresAt:
+              link.expiresAt instanceof Date
+                ? link.expiresAt.toISOString()
+                : link.expiresAt,
+            geo: link.geo as NewLinkProps["geo"],
+            testVariants: link.testVariants as NewLinkProps["testVariants"],
+            testCompletedAt:
+              link.testCompletedAt instanceof Date
+                ? link.testCompletedAt.toISOString()
+                : link.testCompletedAt,
+            testStartedAt:
+              link.testStartedAt instanceof Date
+                ? link.testStartedAt.toISOString()
+                : link.testStartedAt,
+            ...data,
+          },
+          workspace,
+          userId: link.userId ?? undefined,
+          bulk: true,
+          skipKeyChecks: true,
+          skipExternalIdChecks: true,
+        }),
+      ),
+    );
+
+    const validLinkIds = processedLinks
+      .filter(({ error }) => error == null)
+      .map(({ link }) => link.id) as string[];
+
+    errorLinks = errorLinks.concat(
+      processedLinks
+        .filter(({ error }) => error != null)
+        .map(({ link, error, code }) => ({
+          error: error as string,
+          code: code as string,
+          link,
+        })),
+    );
+
+    const response =
+      validLinkIds.length > 0
+        ? await bulkUpdateLinks({
+            linkIds: validLinkIds,
+            data: {
+              ...data,
+              tagIds,
+              expiresAt,
+            },
+            workspaceId: workspace.id,
+          })
+        : [];
+
+    waitUntil(
+      (async () => {
+        if (data.proxy && data.image) {
+          await Promise.allSettled(
+            links.map(async (link) => {
+              // delete old proxy image urls if exist and match the link ID
+              if (
+                link.image &&
+                link.image.startsWith(`${R2_URL}/images/${link.id}`) &&
+                link.image !== data.image
+              ) {
+                storage.delete({ key: link.image.replace(`${R2_URL}/`, "") });
+              }
+            }),
+          );
+        }
+      })(),
+    );
+
+    return NextResponse.json([...response, ...errorLinks], { headers });
+  },
+  {
+    requiredPermissions: ["links.write"],
+  },
+);
+
+// DELETE /api/links/bulk – bulk delete up to 100 links
+export const DELETE = withWorkspace(
+  async ({ workspace, headers, searchParams, session }) => {
+    const searchParamsLinkIds = searchParams["linkIds"]
+      ? searchParams["linkIds"].split(",")
+      : [];
+
+    if (searchParamsLinkIds.length === 0) {
+      throw new DubApiError({
+        code: "bad_request",
+        message:
+          "Please provide linkIds to delete. You may use `linkId` or `externalId` prefixed with `ext_` as comma separated values.",
+      });
+    }
+
+    const linkIds = new Set<string>();
+    const externalIds = new Set<string>();
+
+    searchParamsLinkIds.map((id) => {
+      id = id.trim();
+
+      if (id.startsWith("ext_")) {
+        externalIds.add(id.replace("ext_", ""));
+      } else {
+        linkIds.add(id);
+      }
+    });
+
+    if (linkIds.size === 0 && externalIds.size === 0) {
+      throw new DubApiError({
+        code: "bad_request",
+        message:
+          "Please provide linkIds to delete. You may use `linkId` or `externalId` prefixed with `ext_` as comma separated values.",
+      });
+    }
+
+    let links = await prisma.link.findMany({
+      where: {
+        projectId: workspace.id,
+        OR: [
+          ...(linkIds.size > 0 ? [{ id: { in: Array.from(linkIds) } }] : []),
+          ...(externalIds.size > 0
+            ? [{ externalId: { in: Array.from(externalIds) } }]
+            : []),
+        ],
+      },
+      include: {
+        ...includeTags,
+        ...includeProgramEnrollment,
+      },
+    });
+
+    if (checkIfLinksHaveFolders(links)) {
+      const folderIds = [
+        ...new Set(
+          links.map((link) => link.folderId).filter(Boolean) as string[],
+        ),
+      ];
+
+      const folderPermissions = await verifyFolderAccessBulk({
+        workspace,
+        userId: session.user.id,
+        folderIds,
+        requiredPermission: "folders.links.write",
+      });
+
+      links = links.filter((link) => {
+        if (!link.folderId) {
+          return true;
+        }
+
+        const validFolder = folderPermissions.find(
+          (folder) => folder.folderId === link.folderId,
+        );
+
+        return validFolder?.hasPermission ?? false;
+      });
+    }
+
+    links = links.filter((link) => !isRootDomainLinkKey(link.key));
+
+    const { count: deletedCount } = await prisma.link.deleteMany({
+      where: {
+        id: { in: links.map((link) => link.id) },
+        projectId: workspace.id,
+      },
+    });
+
+    waitUntil(bulkDeleteLinks(links));
+
+    return NextResponse.json(
+      {
+        deletedCount,
+      },
+      { headers },
+    );
+  },
+  {
+    requiredPermissions: ["links.write"],
+  },
+);

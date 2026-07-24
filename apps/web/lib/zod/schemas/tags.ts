@@ -1,0 +1,90 @@
+import { RESOURCE_COLORS } from "@/ui/colors";
+import * as z from "zod/v4";
+import { booleanQuerySchema, getPaginationQuerySchema } from "./misc";
+
+export const TAGS_MAX_PAGE_SIZE = 100;
+
+export const getTagsQuerySchema = z
+  .object({
+    sortBy: z
+      .enum(["name", "createdAt"])
+      .optional()
+      .default("name")
+      .describe("The field to sort the tags by."),
+    sortOrder: z
+      .enum(["asc", "desc"])
+      .optional()
+      .default("asc")
+      .describe("The order to sort the tags by."),
+    search: z
+      .string()
+      .optional()
+      .describe("The search term to filter the tags by."),
+    ids: z
+      .union([z.string(), z.array(z.string())])
+      .transform((v) => (Array.isArray(v) ? v : v.split(",")))
+      .optional()
+      .describe("IDs of tags to filter by."),
+  })
+  .extend(getPaginationQuerySchema({ pageSize: TAGS_MAX_PAGE_SIZE }));
+
+export const getTagsQuerySchemaExtended = getTagsQuerySchema.extend({
+  // Only Dub UI uses the following query parameters
+  includeLinksCount: booleanQuerySchema.default(false),
+});
+
+export const getTagsCountQuerySchema = getTagsQuerySchema.omit({
+  ids: true,
+  page: true,
+  pageSize: true,
+});
+
+// TODO: Remove "pink" after confirming we don't have any pink tags in the database
+const tagColors = [...RESOURCE_COLORS, "pink"] as const;
+
+export const tagColorSchema = z
+  .enum(tagColors, {
+    error: `Invalid color. Must be one of: ${tagColors.join(", ")}`,
+  })
+  .describe("The color of the tag");
+
+export const createTagBodySchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(50)
+      .describe("The name of the tag to create."),
+    color: tagColorSchema.describe(
+      `The color of the tag. If not provided, a random color will be used from the list: ${RESOURCE_COLORS.join(", ")}.`,
+    ),
+    tag: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("The name of the tag to create.")
+      .meta({ deprecated: true }),
+  })
+  .partial()
+  .superRefine((data, ctx) => {
+    if (!data.name && !data.tag) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["name"],
+        message: "Name is required.",
+      });
+    }
+  });
+
+export const updateTagBodySchema = createTagBodySchema;
+
+export const LinkTagSchema = z
+  .object({
+    id: z.string().describe("The unique ID of the tag."),
+    name: z.string().describe("The name of the tag."),
+    color: tagColorSchema.describe("The color of the tag."),
+  })
+  .meta({
+    title: "LinkTag",
+  });

@@ -1,0 +1,28 @@
+import { fetcher } from "@dub/utils";
+import { FolderAccessRequest } from "@prisma/client";
+import useSWR from "swr";
+import useWorkspace from "./use-workspace";
+
+export function useFolderAccessRequests() {
+  const { id, plan } = useWorkspace();
+
+  const { data, error, isLoading, isValidating, mutate } = useSWR<
+    FolderAccessRequest[]
+  >(
+    id && plan !== "free" && plan !== "pro"
+      ? `/api/folders/access-requests?workspaceId=${id}`
+      : null,
+    fetcher,
+    {
+      dedupingInterval: 60000,
+    },
+  );
+
+  return {
+    accessRequests: data,
+    error,
+    isLoading,
+    isValidating,
+    mutate,
+  };
+}

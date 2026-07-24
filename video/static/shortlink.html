@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:720px; overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  body {
+    background:radial-gradient(1100px 700px at 30% 30%, #12351f 0%, #0a0e14 55%, #05070b 100%);
+    display:flex; align-items:center; justify-content:center; gap:64px;
+    color:#e8f5ec; position:relative; padding:0 90px;
+  }
+  .grid {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(34,224,122,.06) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(34,224,122,.06) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(700px 600px at 30% 40%,#000,transparent 80%);
+  }
+  .left { position:relative; z-index:2; width:520px; }
+  .kicker { font:700 18px "JetBrains Mono",Consolas,monospace; letter-spacing:3px;
+    color:#22e07a; margin-bottom:18px; }
+  .kicker::before { content:"▎"; color:#22e07a; }
+  h1 { font-size:50px; font-weight:800; line-height:1.2; color:#fff; margin-bottom:28px; }
+  h1 .hl { color:#22e07a; }
+  .feat { display:flex; align-items:center; gap:12px; font-size:19px;
+    color:#cfeeda; margin-bottom:16px; font-weight:300; }
+  .feat b { color:#fff; font-weight:600; }
+  .dot { color:#22e07a; font-size:20px; }
+  .mock { position:relative; z-index:2; width:440px; padding:30px;
+    border-radius:20px; background:#0e141c; border:1px solid rgba(34,224,122,.28);
+    box-shadow:0 30px 80px rgba(0,0,0,.5); }
+  .row { display:flex; align-items:center; justify-content:space-between;
+    padding:16px 18px; border-radius:12px; background:rgba(255,255,255,.03);
+    border:1px solid rgba(255,255,255,.06); margin-bottom:14px; }
+  .link { font:600 20px "JetBrains Mono",Consolas,monospace; color:#22e07a; }
+  .dest { font-size:13px; opacity:.5; margin-top:5px; }
+  .qr { width:52px; height:52px; border-radius:8px; background:
+    repeating-linear-gradient(0deg,#22e07a 0 4px,transparent 4px 8px),
+    repeating-linear-gradient(90deg,#22e07a 0 4px,transparent 4px 8px);
+    opacity:.85; }
+  .stat { display:flex; gap:8px; }
+  .pill { font-size:12px; padding:5px 11px; border-radius:999px;
+    background:rgba(34,224,122,.12); color:#8bf5b6; border:1px solid rgba(34,224,122,.25); }
+  .clicks { font:700 22px "JetBrains Mono",Consolas,monospace; color:#fff; }
+  .clicks span { font-size:13px; opacity:.5; font-weight:400; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="left">
+    <div class="kicker">SHORT LINKS</div>
+    <h1>为每条投放<br><span class="hl">生成品牌短链</span></h1>
+    <div class="feat"><span class="dot">●</span><span><b>自定义域名</b>，链接自带品牌</span></div>
+    <div class="feat"><span class="dot">●</span><span><b>二维码</b>一键生成，线下也能投</span></div>
+    <div class="feat"><span class="dot">●</span><span><b>备注标签</b>分组管理，一键复制分发</span></div>
+  </div>
+  <div class="mock">
+    <div class="row">
+      <div>
+        <div class="link">th.link/spring</div>
+        <div class="dest">→ trafficker.app/landing/2026</div>
+      </div>
+      <div class="qr"></div>
+    </div>
+    <div class="row">
+      <div class="stat">
+        <span class="pill">春季campaign</span>
+        <span class="pill">微信</span>
+      </div>
+      <div class="clicks">12,480 <span>次点击</span></div>
+    </div>
+    <div class="row" style="margin-bottom:0;">
+      <div>
+        <div class="link">th.link/promo</div>
+        <div class="dest">→ trafficker.app/pricing</div>
+      </div>
+      <div class="qr"></div>
+    </div>
+  </div>
+</body>
+</html>

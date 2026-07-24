@@ -1,0 +1,53 @@
+import { get } from "@vercel/edge-config";
+import { prefixWorkspaceId } from "../api/workspaces/workspace-id";
+import { BetaFeatures } from "../types";
+
+type BetaFeaturesRecord = Record<BetaFeatures, string[]>;
+
+export const getFeatureFlags = async ({
+  workspaceId,
+  workspaceSlug,
+}: {
+  workspaceId?: string;
+  workspaceSlug?: string;
+}): Promise<Record<BetaFeatures, boolean>> => {
+  if (workspaceId) {
+    workspaceId = prefixWorkspaceId(workspaceId);
+  }
+
+  const workspaceFeatures: Record<BetaFeatures, boolean> = {
+    analyticsSettingsSiteVisitTracking: false,
+  };
+
+  if (!process.env.EDGE_CONFIG) {
+    // return all features as true if edge config is not available
+    return Object.fromEntries(
+      Object.entries(workspaceFeatures).map(([key, _v]) => [key, true]),
+    ) as Record<BetaFeatures, boolean>;
+  } else if (!workspaceId && !workspaceSlug) {
+    return workspaceFeatures;
+  }
+
+  let betaFeatures: BetaFeaturesRecord | undefined = undefined;
+
+  try {
+    betaFeatures = await get("betaFeatures");
+  } catch (e) {
+    console.error(`Error getting beta features: ${e}`);
+  }
+
+  if (betaFeatures) {
+    for (const [featureFlag, workspaceIdsOrSlugs] of Object.entries(
+      betaFeatures,
+    )) {
+      if (
+        (workspaceId && workspaceIdsOrSlugs.includes(workspaceId)) ||
+        (workspaceSlug && workspaceIdsOrSlugs.includes(workspaceSlug))
+      ) {
+        workspaceFeatures[featureFlag] = true;
+      }
+    }
+  }
+
+  return workspaceFeatures;
+};

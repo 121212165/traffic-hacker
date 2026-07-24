@@ -1,0 +1,15 @@
+import * as z from "zod/v4";
+
+export const integrationTestEnv = z.object({
+  E2E_BASE_URL: z.url().min(1),
+  E2E_TOKEN: z.string().min(1),
+  E2E_TOKEN_MEMBER: z.string().min(1),
+  E2E_TOKEN_OLD: z.string().min(1),
+  E2E_PUBLISHABLE_KEY: z.string().min(1),
+  CI: z.coerce
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+});
+
+export const env = integrationTestEnv.parse(process.env);

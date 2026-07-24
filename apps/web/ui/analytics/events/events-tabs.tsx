@@ -1,0 +1,158 @@
+import { editQueryString } from "@/lib/analytics/utils";
+import {
+  MiniAreaChart,
+  useCurrentProduct,
+  useMediaQuery,
+  useRouterStuff,
+} from "@dub/ui";
+import { capitalize, cn, fetcher } from "@dub/utils";
+import NumberFlow from "@number-flow/react";
+import { useCallback, useContext, useEffect } from "react";
+import useSWRImmutable from "swr/immutable";
+import { AnalyticsContext } from "../analytics-provider";
+
+type TimeseriesData = {
+  start: Date;
+  clicks: number;
+  leads: number;
+  sales: number;
+  saleAmount: number;
+}[];
+
+export default function EventsTabs() {
+  const { searchParams, queryParams } = useRouterStuff();
+  const { isMobile } = useMediaQuery();
+  const { product } = useCurrentProduct();
+
+  const tab = searchParams.get("event") || "clicks";
+
+  const {
+    baseApiPath,
+    queryString,
+    requiresUpgrade,
+    totalEvents,
+    totalEventsLoading,
+    fetchCompositeStats,
+  } = useContext(AnalyticsContext);
+
+  const { data: timeseriesData, isLoading: isLoadingTimeseries } =
+    useSWRImmutable<TimeseriesData>(
+      product &&
+        `${baseApiPath}?${editQueryString(queryString, {
+          groupBy: "timeseries",
+          event: fetchCompositeStats ? "composite" : "clicks",
+        })}`,
+      fetcher,
+      {
+        shouldRetryOnError: !requiresUpgrade,
+        keepPreviousData: true,
+      },
+    );
+
+  const onEventTabClick = useCallback(
+    (event: string) => {
+      const sortOptions =
+        event === "sales" ? ["timestamp", "saleAmount"] : ["date"];
+      const currentSort = searchParams.get("sort");
+      queryParams({
+        set: { event },
+        del: [
+          // Reset pagination
+          "page",
+          // Reset sort if not possible
+          ...(currentSort && !sortOptions.includes(currentSort)
+            ? ["sort"]
+            : []),
+        ],
+      });
+    },
+    [queryParams, searchParams.get("sort")],
+  );
+
+  useEffect(() => {
+    const sortBy = searchParams.get("sort");
+    if (tab !== "sales" && sortBy !== "timestamp") queryParams({ del: "sort" });
+  }, [tab, searchParams.get("sort")]);
+
+  const tabNumberValue = (event: "clicks" | "leads" | "sales") => {
+    if (totalEvents === undefined) return undefined;
+    if (Array.isArray(totalEvents)) return 0;
+    if (event === "sales") {
+      return (totalEvents.saleAmount ?? 0) / 100;
+    }
+    return totalEvents[event] ?? 0;
+  };
+
+  return (
+    <div className="grid w-full grid-cols-3 gap-2 overflow-x-auto sm:gap-4">
+      {["clicks", "leads", "sales"].map((event) => (
+        <button
+          key={event}
+          className={cn(
+            "flex justify-between gap-4 rounded-xl border bg-white px-5 py-4 text-left transition-[box-shadow] focus:outline-none",
+            tab === event
+              ? "border-black shadow-[0_0_0_1px_black_inset]"
+              : "border-neutral-200 focus-visible:border-black",
+          )}
+          onClick={() => onEventTabClick(event)}
+        >
+          <div>
+            <p className="text-sm text-neutral-600">{capitalize(event)}</p>
+            <div className="mt-2">
+              {totalEvents !== undefined ? (
+                <NumberFlow
+                  value={
+                    tabNumberValue(event as "clicks" | "leads" | "sales") ?? 0
+                  }
+                  className={cn(
+                    "text-2xl transition-opacity",
+                    totalEventsLoading && "opacity-40",
+                  )}
+                  format={
+                    event === "sales"
+                      ? {
+                          style: "currency",
+                          currency: "USD",
+                          // @ts-ignore – trailingZeroDisplay is a valid option but TS is outdated
+                          trailingZeroDisplay: "stripIfInteger",
+                        }
+                      : {
+                          notation:
+                            (tabNumberValue(
+                              event as "clicks" | "leads" | "sales",
+                            ) ?? 0) > 999999
+                              ? "compact"
+                              : "standard",
+                        }
+                  }
+                />
+              ) : (
+                <div className="h-8 w-12 animate-pulse rounded-md bg-neutral-200" />
+              )}
+            </div>
+          </div>
+          {timeseriesData && !isMobile && (
+            <div
+              className={cn(
+                "relative h-full max-w-[140px] grow transition-opacity",
+                isLoadingTimeseries && "opacity-40",
+              )}
+            >
+              <MiniAreaChart
+                data={
+                  timeseriesData?.map((d) => ({
+                    date: new Date(d.start),
+                    value:
+                      ((event === "sales" ? d?.saleAmount : d?.[event]) as
+                        | number
+                        | undefined) ?? 0,
+                  })) || []
+                }
+              />
+            </div>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}

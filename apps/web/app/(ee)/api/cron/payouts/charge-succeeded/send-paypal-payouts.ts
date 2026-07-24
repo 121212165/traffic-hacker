@@ -1,0 +1,105 @@
+import { enqueueBatchJobs } from "@/lib/cron/enqueue-batch-jobs";
+import { queueBatchEmail } from "@/lib/email/queue-batch-email";
+import { createPayPalBatchPayout } from "@/lib/paypal/create-batch-payout";
+import { prisma } from "@/lib/prisma";
+import PartnerPayoutProcessed from "@dub/email/templates/partner-payout-processed";
+import { APP_DOMAIN_WITH_NGROK, currencyFormatter } from "@dub/utils";
+import { Invoice } from "@prisma/client";
+import { waitUntil } from "@vercel/functions";
+
+export async function sendPaypalPayouts({
+  invoice,
+}: {
+  invoice: Pick<Invoice, "id" | "payoutMode">;
+}) {
+  if (invoice.payoutMode === "external") {
+    console.log(
+      `Invoice ${invoice.id} is paid externally, skipping PayPal payouts...`,
+    );
+    return;
+  }
+
+  const payouts = await prisma.payout.findMany({
+    where: {
+      invoiceId: invoice.id,
+      status: "processing",
+      mode: "internal",
+      method: "paypal",
+      partner: {
+        payoutsEnabledAt: {
+          not: null,
+        },
+        paypalEmail: {
+          not: null,
+        },
+      },
+    },
+    include: {
+      partner: {
+        select: {
+          email: true,
+          paypalEmail: true,
+        },
+      },
+      program: {
+        select: {
+          name: true,
+          logo: true,
+        },
+      },
+    },
+  });
+
+  if (payouts.length === 0) {
+    console.log("No payouts for sending via PayPal, skipping...");
+    return;
+  }
+
+  const batchPayout = await createPayPalBatchPayout({
+    payouts,
+    invoiceId: invoice.id,
+  });
+
+  console.log("PayPal batch payout created", batchPayout);
+
+  // update the payouts to "sent" status
+  const updatedPayouts = await prisma.payout.updateMany({
+    where: {
+      id: { in: payouts.map((p) => p.id) },
+    },
+    data: {
+      status: "sent",
+      paidAt: new Date(),
+    },
+  });
+
+  console.log(`Updated ${updatedPayouts.count} payouts to "sent" status`);
+
+  waitUntil(
+    Promise.allSettled([
+      queueBatchEmail<typeof PartnerPayoutProcessed>(
+        payouts.map((payout) => ({
+          variant: "notifications",
+          to: payout.partner.email!,
+          subject: `You've received a ${currencyFormatter(payout.amount)} payout from ${payout.program.name}`,
+          templateName: "PartnerPayoutProcessed",
+          templateProps: {
+            email: payout.partner.email!,
+            program: payout.program,
+            payout,
+          },
+        })),
+      ),
+
+      enqueueBatchJobs(
+        payouts.map((payout) => ({
+          queueName: "create-referral-commissions",
+          url: `${APP_DOMAIN_WITH_NGROK}/api/cron/commissions/referrals/queue`,
+          body: {
+            payoutId: payout.id,
+          },
+        })),
+      ),
+    ]),
+  );
+}

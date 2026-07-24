@@ -1,0 +1,106 @@
+import {
+  clickWebhookEventSchema,
+  webhookPayloadSchema,
+} from "@/lib/webhook/schemas";
+import { nanoid, toCamelCase } from "@dub/utils";
+import { ExpandedLink, transformLink } from "../api/links/utils/transform-link";
+import { generateRandomName } from "../names";
+import { ClickEventTB } from "../types";
+import { clickEventSchema } from "../zod/schemas/clicks";
+import { WEBHOOK_EVENT_ID_PREFIX } from "./constants";
+import { leadWebhookEventSchema, saleWebhookEventSchema } from "./schemas";
+import type { WebhookTrigger } from "./types";
+
+export const transformClickEventData = (
+  data: ClickEventTB & {
+    link: any;
+  },
+) => {
+  const click = Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [toCamelCase(key), value]),
+  );
+
+  const parsedTimestamp = new Date(click.timestamp ?? Date.now());
+  const validTimestamp = Number.isNaN(parsedTimestamp.getTime())
+    ? new Date()
+    : parsedTimestamp;
+
+  return clickWebhookEventSchema.parse({
+    ...click,
+    click: clickEventSchema.parse({
+      ...click,
+      timestamp: validTimestamp,
+      id: click.clickId,
+    }),
+  });
+};
+
+const transformWebhookCustomer = (customer: any) => {
+  return {
+    ...customer,
+    name: customer.name || customer.email || generateRandomName(),
+    externalId: customer.externalId || "",
+    country: undefined,
+    avatar: customer.avatar,
+  };
+};
+
+export const transformLeadEventData = (data: any) => {
+  const lead = Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [toCamelCase(key), value]),
+  );
+
+  const { customer } = data;
+
+  return leadWebhookEventSchema.parse({
+    ...lead,
+    customer: transformWebhookCustomer(customer),
+    click: {
+      ...lead,
+      id: lead.clickId,
+      timestamp: new Date(lead.timestamp + "Z"),
+    },
+    // transformLink -> add shortLink, qrCode, workspaceId, etc.
+    link: transformLink(lead.link as ExpandedLink),
+    metadata: lead.metadata || null,
+  });
+};
+
+export const transformSaleEventData = (data: any) => {
+  const sale = Object.fromEntries(
+    Object.entries(data).map(([key, value]) => [toCamelCase(key), value]),
+  );
+
+  const { customer } = data;
+
+  return saleWebhookEventSchema.parse({
+    ...sale,
+    customer: transformWebhookCustomer(customer),
+    sale: {
+      amount: sale.amount,
+      currency: sale.currency,
+      paymentProcessor: sale.paymentProcessor,
+      invoiceId: sale.invoiceId,
+    },
+    click: {
+      ...sale,
+      id: sale.clickId,
+      timestamp: sale.clickedAt,
+      qr: sale.qr === 1,
+      bot: sale.bot === 1,
+    },
+    // transformLink -> add shortLink, qrCode, workspaceId, etc.
+    link: transformLink(sale.link as ExpandedLink),
+    metadata: sale.metadata ?? null,
+  });
+};
+
+// Transform the payload to the format expected by the webhook
+export const prepareWebhookPayload = (trigger: WebhookTrigger, data: any) => {
+  return webhookPayloadSchema.parse({
+    id: `${WEBHOOK_EVENT_ID_PREFIX}${nanoid(25)}`,
+    data: data,
+    event: trigger,
+    createdAt: new Date().toISOString(),
+  });
+};

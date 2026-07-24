@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:720px; overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  body {
+    background:radial-gradient(1200px 700px at 50% 30%, #12351f 0%, #0a0e14 55%, #05070b 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#e8f5ec; position:relative;
+  }
+  .grid {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(34,224,122,.06) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(34,224,122,.06) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(700px 500px at 50% 40%,#000,transparent 80%);
+  }
+  .glow { position:absolute; top:120px; left:50%; transform:translateX(-50%);
+    width:520px; height:220px; background:#22e07a; filter:blur(120px); opacity:.35; }
+  .content { position:relative; z-index:2; text-align:center; }
+  .mark { font:700 20px "JetBrains Mono",Consolas,monospace; letter-spacing:3px;
+    color:#22e07a; margin-bottom:28px; opacity:.9; }
+  .mark::before { content:"▎"; color:#22e07a; }
+  h1 { font-size:80px; font-weight:800; letter-spacing:2px; line-height:1.05;
+    background:linear-gradient(90deg,#ffffff,#8bf5b6); -webkit-background-clip:text;
+    background-clip:text; color:transparent; text-shadow:0 6px 40px rgba(34,224,122,.25); }
+  .en { font:700 34px "JetBrains Mono",Consolas,monospace; letter-spacing:6px;
+    color:#22e07a; margin-top:14px; }
+  .sub { font-size:24px; opacity:.75; font-weight:300; letter-spacing:2px; margin-top:26px; }
+  .tags { margin-top:44px; display:flex; gap:14px; justify-content:center; }
+  .tag { padding:9px 20px; border:1px solid rgba(34,224,122,.35);
+    border-radius:999px; font-size:16px; color:#bff3d3;
+    background:rgba(34,224,122,.06); }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="glow"></div>
+  <div class="content">
+    <div class="mark">SELF-HOSTED LINK ATTRIBUTION</div>
+    <h1>流量黑客</h1>
+    <div class="en">TrafficHacker</div>
+    <div class="sub">自建 · 短链归因平台</div>
+    <div class="tags">
+      <div class="tag">短链管理</div>
+      <div class="tag">UTM 追踪</div>
+      <div class="tag">转化归因</div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,257 @@
+import { plain } from "@/lib/plain/client";
+import { upsertPlainCustomer } from "@/lib/plain/upsert-plain-customer";
+import { prisma } from "@/lib/prisma";
+import {
+  COUNTRIES,
+  currencyFormatter,
+  formatDate,
+  formatDateTimeSmart,
+} from "@dub/utils";
+import { uiComponent } from "@team-plain/typescript-sdk";
+import { NextRequest, NextResponse } from "next/server";
+import {
+  plainCallbackSchema,
+  plainCopySection,
+  plainDivider,
+  plainEmptyContainer,
+  plainSpacer,
+  plainUsageSection,
+} from "../utils";
+
+export async function POST(req: NextRequest) {
+  // authenticate webhook X-Plain-Webhook-Secret
+  const token = req.headers.get("X-Plain-Webhook-Secret");
+  if (token !== process.env.PLAIN_WEBHOOK_SECRET) {
+    return new Response("Unauthorized", { status: 401 });
+  }
+
+  let { customer } = plainCallbackSchema.parse(await req.json());
+
+  // if there's no externalId yet, try to find the user by email and set it
+  if (!customer.externalId) {
+    const user = await prisma.user.findUnique({
+      where: {
+        email: customer.email,
+      },
+    });
+
+    if (!user || !user.email) {
+      return NextResponse.json({
+        cards: [
+          {
+            key: "partner",
+            components: [plainEmptyContainer("No user found.")],
+          },
+        ],
+      });
+    }
+    customer.externalId = user.id;
+
+    await upsertPlainCustomer({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    });
+  }
+
+  const partnerProfile = await prisma.partner.findFirst({
+    where: {
+      users: {
+        some: {
+          userId: customer.externalId,
+        },
+      },
+    },
+    include: {
+      programs: {
+        select: {
+          program: {
+            select: {
+              name: true,
+            },
+          },
+          createdAt: true,
+          totalCommissions: true,
+        },
+        where: {
+          totalCommissions: {
+            gt: 0,
+          },
+        },
+        orderBy: {
+          totalCommissions: "desc",
+        },
+        take: 5,
+      },
+    },
+  });
+
+  if (!partnerProfile) {
+    return NextResponse.json({
+      cards: [
+        {
+          key: "partner",
+          components: [plainEmptyContainer("No partner profile found.")],
+        },
+      ],
+    });
+  }
+
+  const {
+    id,
+    name,
+    email,
+    country,
+    stripeRecipientId,
+    cryptoWalletAddress,
+    stripeConnectId,
+    paypalEmail,
+    payoutsEnabledAt,
+  } = partnerProfile;
+
+  await plain.addCustomerToCustomerGroups({
+    customerId: customer.id,
+    customerGroupIdentifiers: [
+      {
+        customerGroupKey: "partners.dub.co",
+      },
+    ],
+  });
+
+  return NextResponse.json({
+    cards: [
+      {
+        key: "partner",
+        components: [
+          ...plainCopySection({
+            label: "Partner ID",
+            value: id,
+          }),
+          plainSpacer,
+          ...plainCopySection({
+            label: "Partner Name",
+            value: name,
+          }),
+          ...(email
+            ? [
+                plainSpacer,
+                ...plainCopySection({
+                  label: "Partner Email",
+                  value: email,
+                }),
+              ]
+            : []),
+          plainSpacer,
+          ...plainCopySection({
+            label: "Partner Country",
+            value: country ? COUNTRIES[country] : "Unknown",
+          }),
+          ...(stripeRecipientId
+            ? [
+                plainSpacer,
+                uiComponent.row({
+                  mainContent: [
+                    uiComponent.text({
+                      text: "Stripe Recipient Account",
+                      size: "M",
+                      color: "NORMAL",
+                    }),
+                    uiComponent.text({
+                      text: stripeRecipientId,
+                      size: "S",
+                      color: "MUTED",
+                    }),
+                  ],
+                  asideContent: [
+                    uiComponent.linkButton({
+                      url: `https://dashboard.stripe.com/global-payouts/recipients/${stripeRecipientId}`,
+                      label: "View in Stripe",
+                    }),
+                  ],
+                }),
+                ...(cryptoWalletAddress
+                  ? [
+                      plainSpacer,
+                      ...plainCopySection({
+                        label: "USDC Wallet Address",
+                        value: cryptoWalletAddress,
+                      }),
+                    ]
+                  : []),
+              ]
+            : []),
+          ...(stripeConnectId
+            ? [
+                plainSpacer,
+                uiComponent.row({
+                  mainContent: [
+                    uiComponent.text({
+                      text: "Stripe Express Account",
+                      size: "M",
+                      color: "NORMAL",
+                    }),
+                    uiComponent.text({
+                      text: stripeConnectId,
+                      size: "S",
+                      color: "MUTED",
+                    }),
+                  ],
+                  asideContent: [
+                    uiComponent.linkButton({
+                      url: `https://dashboard.stripe.com/connect/accounts/${stripeConnectId}`,
+                      label: "View in Stripe",
+                    }),
+                  ],
+                }),
+              ]
+            : []),
+          ...(paypalEmail
+            ? [
+                plainSpacer,
+                ...plainCopySection({
+                  label: "Paypal Email",
+                  value: paypalEmail,
+                }),
+              ]
+            : []),
+          plainSpacer,
+          uiComponent.row({
+            mainContent: [
+              uiComponent.text({
+                text: "Payouts Enabled (UTC)",
+              }),
+            ],
+            asideContent: [
+              uiComponent.badge({
+                label: payoutsEnabledAt
+                  ? formatDateTimeSmart(payoutsEnabledAt, {
+                      timeZone: "utc",
+                    })
+                  : "No",
+                color: payoutsEnabledAt ? "GREEN" : "RED",
+              }),
+            ],
+          }),
+          ...(partnerProfile.programs.length > 0
+            ? [
+                plainDivider,
+                ...partnerProfile.programs.flatMap(
+                  ({ program, createdAt, totalCommissions }) => [
+                    plainUsageSection({
+                      usage: currencyFormatter(totalCommissions),
+                      label: program.name,
+                      sublabel: `Partner since ${formatDate(createdAt)}`,
+                      color: "GREEN",
+                    }),
+                    uiComponent.spacer({
+                      size: "M",
+                    }),
+                  ],
+                ),
+              ]
+            : []),
+        ],
+      },
+    ],
+  });
+}

@@ -1,0 +1,346 @@
+import useCurrentFolderId from "@/lib/swr/use-current-folder-id";
+import { useLinkTagsCount } from "@/lib/swr/use-link-tags-count";
+import useLinksCount from "@/lib/swr/use-links-count";
+import useTags from "@/lib/swr/use-tags";
+import useWorkspace from "@/lib/swr/use-workspace";
+import useWorkspaceUsers from "@/lib/swr/use-workspace-users";
+import { TagProps } from "@/lib/types";
+import { TAGS_MAX_PAGE_SIZE } from "@/lib/zod/schemas/tags";
+import { UserAvatar } from "@/ui/users/user-avatar";
+import { BlurImage, Globe, Tag, User, useRouterStuff } from "@dub/ui";
+import { GOOGLE_FAVICON_URL, nFormatter } from "@dub/utils";
+import { useContext, useMemo, useState } from "react";
+import { useDebounce } from "use-debounce";
+import { LinksDisplayContext } from "./links-display-provider";
+import TagBadge from "./tag-badge";
+
+export function useLinkFilters() {
+  const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebounce(search, 500);
+  const { folderId } = useCurrentFolderId();
+  const { isMegaWorkspace } = useWorkspace();
+
+  const { tags, tagsAsync } = useTagFilterOptions({
+    search: selectedFilter === "tagIds" ? debouncedSearch : "",
+    folderId: folderId ?? "",
+  });
+
+  const domains = useDomainFilterOptions({
+    folderId: folderId ?? "",
+  });
+
+  const users = useUserFilterOptions({
+    folderId: folderId ?? "",
+  });
+
+  const { queryParams, searchParamsObj } = useRouterStuff();
+
+  const filters = useMemo(() => {
+    return [
+      {
+        key: "tagIds",
+        icon: Tag,
+        label: "Tag",
+        multiple: true,
+        hideOperator: true,
+        shouldFilter: !tagsAsync,
+        getOptionIcon: (value, props) => {
+          const tagColor =
+            props.option?.data?.color ??
+            tags?.find(({ id }) => id === value)?.color;
+          return tagColor ? (
+            <TagBadge color={tagColor} withIcon className="sm:p-1" />
+          ) : null;
+        },
+        getOptionLabel: (value, props) => {
+          if (props.option?.label) return props.option.label;
+          const tag = tags?.find(({ id }) => id === value);
+          return tag?.name ?? value;
+        },
+        options:
+          tags?.map(({ id, name, color, count, hideDuringSearch }) => ({
+            value: id,
+            icon: <TagBadge color={color} withIcon className="sm:p-1" />,
+            label: name,
+            data: { color },
+            ...(isMegaWorkspace
+              ? {}
+              : { right: nFormatter(count, { full: true }) }),
+            hideDuringSearch,
+          })) ?? null,
+      },
+      {
+        key: "domain",
+        icon: Globe,
+        label: "Domain",
+        getOptionIcon: (value) => (
+          <BlurImage
+            src={`${GOOGLE_FAVICON_URL}${value}`}
+            alt={value}
+            className="h-4 w-4 rounded-full"
+            width={16}
+            height={16}
+          />
+        ),
+        options: domains.map(({ slug, count }) => ({
+          value: slug,
+          label: slug,
+          ...(!isMegaWorkspace &&
+            count !== undefined && {
+              right: nFormatter(count, { full: true }),
+            }),
+        })),
+      },
+      {
+        key: "userId",
+        icon: User,
+        label: "Creator",
+        options:
+          users?.map(({ id, name, image, count }) => ({
+            value: id,
+            label: name,
+            icon: (
+              <UserAvatar
+                user={{
+                  id,
+                  name,
+                  image,
+                }}
+                className="h-4 w-4"
+              />
+            ),
+            ...(isMegaWorkspace
+              ? {}
+              : { right: nFormatter(count, { full: true }) }),
+          })) ?? null,
+      },
+    ];
+  }, [domains, tags, users, isMegaWorkspace]);
+
+  const selectedTagIds = useMemo(
+    () => searchParamsObj["tagIds"]?.split(",")?.filter(Boolean) ?? [],
+    [searchParamsObj],
+  );
+
+  const activeFilters = useMemo(() => {
+    const { domain, tagIds, userId } = searchParamsObj;
+    return [
+      ...(domain ? [{ key: "domain", value: domain }] : []),
+      ...(tagIds ? [{ key: "tagIds", values: selectedTagIds }] : []),
+      ...(userId ? [{ key: "userId", value: userId }] : []),
+    ];
+  }, [searchParamsObj, selectedTagIds]);
+
+  const onSelect = (key: string, value: any) => {
+    if (key === "tagIds") {
+      queryParams({
+        set: {
+          tagIds: selectedTagIds.concat(value).join(","),
+        },
+        del: "page",
+      });
+    } else {
+      queryParams({
+        set: {
+          [key]: value,
+        },
+        del: "page",
+      });
+    }
+  };
+
+  const onRemove = (key: string, value: any) => {
+    if (
+      key === "tagIds" &&
+      !(selectedTagIds.length === 1 && selectedTagIds[0] === value)
+    ) {
+      queryParams({
+        set: {
+          tagIds: selectedTagIds.filter((id) => id !== value).join(","),
+        },
+        del: "page",
+      });
+    } else {
+      queryParams({
+        del: [key, "page"],
+      });
+    }
+  };
+
+  const onRemoveFilter = (key: string) => {
+    queryParams({
+      del: [key, "page"],
+    });
+  };
+
+  const onRemoveAll = () => {
+    queryParams({
+      del: ["domain", "tagIds", "userId", "search"],
+    });
+  };
+
+  return {
+    filters,
+    activeFilters,
+    onSelect,
+    onRemove,
+    onRemoveFilter,
+    onRemoveAll,
+    setSearch,
+    setSelectedFilter,
+  };
+}
+
+function useTagFilterOptions({
+  search,
+  folderId,
+}: {
+  search: string;
+  folderId: string;
+}) {
+  const { searchParamsObj } = useRouterStuff();
+
+  const tagIds = useMemo(
+    () => searchParamsObj.tagIds?.split(",")?.filter(Boolean) ?? [],
+    [searchParamsObj.tagIds],
+  );
+
+  const { data: tagsCount } = useLinkTagsCount();
+  const tagsAsync = Boolean(tagsCount && tagsCount > TAGS_MAX_PAGE_SIZE);
+  const { tags, loading: loadingTags } = useTags({
+    query: { search: tagsAsync ? search : "" },
+  });
+
+  const { tags: selectedTags } = useTags({
+    query: { ids: tagIds },
+    enabled: tagsAsync,
+  });
+  const { showArchived } = useContext(LinksDisplayContext);
+  const { isMegaWorkspace } = useWorkspace();
+
+  const { data: tagLinksCount } = useLinksCount<
+    {
+      tagId: string;
+      _count: number;
+    }[]
+  >({
+    query: { groupBy: "tagId", showArchived, folderId },
+    enabled: !isMegaWorkspace,
+  });
+
+  const tagsResult = useMemo(() => {
+    return loadingTags ||
+      // Consider tags loading if we can't find the currently filtered tag
+      (tagIds?.length &&
+        tagIds.some(
+          (id) =>
+            ![...(selectedTags ?? []), ...(tags ?? [])].some(
+              (t) => t.id === id,
+            ),
+        ))
+      ? null
+      : (
+          [
+            ...(tags ?? []),
+            // Add selected tag to list if not already in tags
+            ...(selectedTags
+              ?.filter((st) => !tags?.some((t) => t.id === st.id))
+              ?.map((st) => ({ ...st, hideDuringSearch: true })) ?? []),
+          ] as (TagProps & { hideDuringSearch?: boolean })[]
+        )
+          ?.map((tag) => ({
+            ...tag,
+            count: isMegaWorkspace
+              ? 0
+              : tagLinksCount?.find(({ tagId }) => tagId === tag.id)?._count ||
+                0,
+          }))
+          .sort((a, b) =>
+            isMegaWorkspace ? a.name.localeCompare(b.name) : b.count - a.count,
+          ) ?? null;
+  }, [loadingTags, tags, selectedTags, tagLinksCount, tagIds, isMegaWorkspace]);
+
+  return { tags: tagsResult, tagsAsync };
+}
+
+function useDomainFilterOptions({ folderId }: { folderId: string }) {
+  const { showArchived } = useContext(LinksDisplayContext);
+  const { isMegaWorkspace, domains: workspaceDomains } = useWorkspace();
+
+  const { data: domainsCount } = useLinksCount<
+    {
+      domain: string;
+      _count: number;
+    }[]
+  >({
+    query: {
+      groupBy: "domain",
+      showArchived,
+      folderId,
+    },
+    enabled: !isMegaWorkspace,
+  });
+
+  return useMemo((): { slug: string; count?: number }[] => {
+    if (isMegaWorkspace && workspaceDomains?.length) {
+      return [...workspaceDomains]
+        .sort((a, b) => {
+          if (Boolean(a.primary) !== Boolean(b.primary)) {
+            return a.primary ? -1 : 1;
+          }
+          return a.slug.localeCompare(b.slug);
+        })
+        .map(({ slug }) => ({ slug }));
+    }
+
+    if (!domainsCount || domainsCount.length === 0) return [];
+
+    return domainsCount
+      .map(({ domain, _count }) => ({
+        slug: domain,
+        count: _count,
+      }))
+      .sort((a, b) => (b.count ?? 0) - (a.count ?? 0));
+  }, [isMegaWorkspace, workspaceDomains, domainsCount]);
+}
+
+function useUserFilterOptions({ folderId }: { folderId: string }) {
+  const { users } = useWorkspaceUsers();
+  const { showArchived } = useContext(LinksDisplayContext);
+  const { isMegaWorkspace } = useWorkspace();
+
+  const { data: usersCount } = useLinksCount<
+    {
+      userId: string;
+      _count: number;
+    }[]
+  >({
+    query: {
+      groupBy: "userId",
+      showArchived,
+      folderId,
+    },
+    enabled: !isMegaWorkspace,
+  });
+
+  return useMemo(
+    () =>
+      users
+        ? users
+            .map((user) => ({
+              ...user,
+              count: isMegaWorkspace
+                ? 0
+                : usersCount?.find(({ userId }) => userId === user.id)
+                    ?._count || 0,
+            }))
+            .sort((a, b) =>
+              isMegaWorkspace
+                ? (a.name ?? "").localeCompare(b.name ?? "")
+                : b.count - a.count,
+            )
+        : null,
+    [users, usersCount, isMegaWorkspace],
+  );
+}

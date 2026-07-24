@@ -1,0 +1,274 @@
+import { useLinkTagsCount } from "@/lib/swr/use-link-tags-count";
+import useTags from "@/lib/swr/use-tags";
+import useWorkspace from "@/lib/swr/use-workspace";
+import { TagProps } from "@/lib/types";
+import { TAGS_MAX_PAGE_SIZE } from "@/lib/zod/schemas/tags";
+import { LinkFormData } from "@/ui/links/link-builder/link-builder-provider";
+import TagBadge from "@/ui/links/tag-badge";
+import { useCompletion } from "@ai-sdk/react";
+import {
+  AnimatedSizeContainer,
+  Combobox,
+  InfoTooltip,
+  Magic,
+  Tag,
+  Tooltip,
+} from "@dub/ui";
+import { cn } from "@dub/utils";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
+import { useFormContext, useWatch } from "react-hook-form";
+import { toast } from "sonner";
+import { mutate } from "swr";
+import { useDebounce } from "use-debounce";
+import { MultiTagsIcon } from "./multi-tags-icon";
+import { useLinkBuilderKeyboardShortcut } from "./use-link-builder-keyboard-shortcut";
+
+function getTagOption(tag: TagProps) {
+  return {
+    value: tag.id,
+    label: tag.name,
+    icon: <MultiTagsIcon tags={[tag]} />,
+    meta: { color: tag.color },
+  };
+}
+
+export const TagSelect = memo(() => {
+  const {
+    id: workspaceId,
+    slug,
+    mutate: mutateWorkspace,
+    exceededAI,
+  } = useWorkspace();
+
+  const [search, setSearch] = useState("");
+  const [debouncedSearch] = useDebounce(search, 500);
+
+  const { data: tagsCount } = useLinkTagsCount();
+  const useAsync = tagsCount && tagsCount > TAGS_MAX_PAGE_SIZE;
+
+  const { tags: availableTags, loading: loadingTags } = useTags({
+    query: {
+      sortBy: "createdAt",
+      sortOrder: "desc",
+      ...(useAsync ? { search: debouncedSearch } : {}),
+    },
+  });
+
+  const { control, setValue } = useFormContext<LinkFormData>();
+  const [tags, linkId, url, title, description] = useWatch({
+    control,
+    name: ["tags", "id", "url", "title", "description"],
+  });
+  const [debouncedUrl] = useDebounce(url, 500);
+
+  const tagResolutionCacheRef = useRef<Map<string, TagProps>>(new Map());
+  const prevLinkIdRef = useRef<string | undefined>(undefined);
+  if (linkId !== prevLinkIdRef.current) {
+    tagResolutionCacheRef.current = new Map();
+    prevLinkIdRef.current = linkId;
+  }
+  for (const t of [...(tags ?? []), ...(availableTags ?? [])]) {
+    if (t?.id) tagResolutionCacheRef.current.set(t.id, t);
+  }
+
+  const [isOpen, setIsOpen] = useState(false);
+
+  const createTag = async (tag: string) => {
+    const res = await fetch(`/api/tags?workspaceId=${workspaceId}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ tag }),
+    });
+
+    if (res.ok) {
+      const newTag = await res.json();
+      setValue("tags", [...tags, newTag], { shouldDirty: true });
+      toast.success(`Successfully created tag!`);
+      setIsOpen(false);
+      await mutate(`/api/tags?workspaceId=${workspaceId}`);
+      return true;
+    } else {
+      const { error } = await res.json();
+      toast.error(error.message);
+    }
+
+    return false;
+  };
+
+  const options = useMemo(() => {
+    if (loadingTags || availableTags === undefined) return undefined;
+    const apiIds = new Set(availableTags.map((t) => t.id));
+    const notOnCurrentPage = [...tagResolutionCacheRef.current.values()].filter(
+      (t) => t?.id && !apiIds.has(t.id),
+    );
+    return [...availableTags, ...notOnCurrentPage].map((tag) =>
+      getTagOption(tag),
+    );
+  }, [availableTags, loadingTags, tags]);
+
+  const selectedTags = useMemo(() => {
+    const resolved = (tags ?? []).filter(
+      (tag): tag is TagProps => tag != null && tag.id != null,
+    );
+    return resolved.map((tag) => getTagOption(tag));
+  }, [tags]);
+
+  useLinkBuilderKeyboardShortcut("t", () => setIsOpen(true), {
+    priority: 2,
+  });
+
+  const [suggestedTags, setSuggestedTags] = useState<TagProps[]>([]);
+
+  const { complete } = useCompletion({
+    api: `/api/ai/completion?workspaceId=${workspaceId}`,
+    streamProtocol: "text",
+    body: {
+      model: "claude-haiku-4-5",
+    },
+    onFinish: (_, completion) => {
+      mutateWorkspace();
+      if (completion) {
+        const completionArr = completion.split(", ");
+        const suggestedTags = completionArr
+          .map((tag: string) => {
+            return availableTags?.find(({ name }) => name === tag) || null;
+          })
+          .filter(Boolean)
+          .slice(0, 5);
+        setSuggestedTags(suggestedTags as TagProps[]);
+      }
+    },
+  });
+
+  useEffect(() => {
+    if (
+      !linkId &&
+      debouncedUrl &&
+      title &&
+      description &&
+      !exceededAI &&
+      tags.length === 0 &&
+      suggestedTags.length === 0 &&
+      availableTags &&
+      availableTags.length > 0
+    ) {
+      complete(
+        `From the list of available tags below, suggest relevant tags for this link: 
+        
+        - URL: ${debouncedUrl}
+        - Meta title: ${title}
+        - Meta description: ${description}. 
+        
+        Only return the tag names in comma-separated format, and nothing else. If there are no relevant tags, return an empty string.
+        
+        Available tags: ${availableTags.map(({ name }) => name).join(", ")}`,
+      );
+    }
+  }, [linkId, debouncedUrl, title, description, tags]);
+
+  return (
+    <div>
+      <div className="mb-1 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <p className="text-sm font-medium text-neutral-700">Tags</p>
+          <InfoTooltip content="Tags are used to organize your links in your Dub dashboard. [Learn more.](https://dub.co/help/article/how-to-use-tags)" />
+        </div>
+        <a
+          href={`/${slug}/settings/library/tags`}
+          target="_blank"
+          className="text-sm text-neutral-400 underline-offset-2 transition-all hover:text-neutral-600 hover:underline"
+        >
+          Manage
+        </a>
+      </div>
+      <Combobox
+        multiple
+        selected={selectedTags}
+        setSelected={(newTags) => {
+          const selectedIds = newTags.map(({ value }) => value);
+          const lookup = new Map<string, TagProps>();
+          for (const t of [...(availableTags ?? []), ...(tags ?? [])]) {
+            if (t?.id) lookup.set(t.id, t);
+          }
+          for (const t of tagResolutionCacheRef.current.values()) {
+            if (t?.id && !lookup.has(t.id)) lookup.set(t.id, t);
+          }
+          const nextTags = selectedIds
+            .map((id) => lookup.get(id))
+            .filter((t): t is TagProps => t != null);
+          setValue("tags", nextTags, { shouldDirty: true });
+          setSuggestedTags((tags) =>
+            tags.filter(({ id }) => !selectedIds.includes(id)),
+          );
+        }}
+        options={loadingTags ? undefined : options}
+        icon={<Tag className="mt-[5px] size-4 text-neutral-500" />}
+        searchPlaceholder="Search or add tags..."
+        shortcutHint="T"
+        buttonProps={{
+          className: cn(
+            "h-auto py-1.5 px-2.5 w-full text-neutral-700 border-neutral-300 items-start",
+            selectedTags.length === 0 && "text-neutral-400",
+          ),
+        }}
+        createLabel={(search) => `Create ${search ? `"${search}"` : "new tag"}`}
+        onCreate={(search) => createTag(search)}
+        open={isOpen}
+        onOpenChange={setIsOpen}
+        onSearchChange={setSearch}
+        shouldFilter={!useAsync}
+        matchTriggerWidth
+      >
+        {selectedTags.length > 0 ? (
+          <div className="flex flex-wrap gap-2">
+            {selectedTags.slice(0, 10).map((tag) => (
+              <TagBadge
+                key={tag.value}
+                name={tag.label}
+                color={tag.meta.color}
+                className="animate-fade-in"
+              />
+            ))}
+          </div>
+        ) : loadingTags && availableTags === undefined && tags.length ? (
+          <div className="my-px h-6 w-1/4 animate-pulse rounded bg-neutral-200" />
+        ) : (
+          <span className="my-px block py-0.5">Select tags...</span>
+        )}
+      </Combobox>
+      <AnimatedSizeContainer
+        height
+        transition={{ ease: "linear", duration: 0.1 }}
+      >
+        {suggestedTags.length > 0 && (
+          <div className="animate-fade-in flex flex-wrap items-center gap-2 pt-3">
+            <Tooltip content="AI-suggested tags based on the content of the link. Click a suggested tag to add it.">
+              <div className="group">
+                <Magic className="size-4 text-neutral-600 transition-colors group-hover:text-neutral-500" />
+              </div>
+            </Tooltip>
+            {suggestedTags.map((tag) => (
+              <button
+                type="button"
+                key={tag.id}
+                onClick={() => {
+                  setValue("tags", [...tags, tag], { shouldDirty: true });
+                  setSuggestedTags((tags) =>
+                    tags.filter(({ id }) => id !== tag.id),
+                  );
+                }}
+                className="group flex items-center transition-all active:scale-95"
+              >
+                <TagBadge {...tag} />
+              </button>
+            ))}
+          </div>
+        )}
+      </AnimatedSizeContainer>
+    </div>
+  );
+});
+
+TagSelect.displayName = "TagSelect";

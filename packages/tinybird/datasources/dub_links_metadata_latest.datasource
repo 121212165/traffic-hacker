@@ -1,0 +1,23 @@
+# Data Source created from Pipe 'dub_links_metadata_pipe'
+
+SCHEMA >
+    `timestamp` DateTime,
+    `workspace_id` LowCardinality(String),
+    `link_id` String,
+    `domain` String,
+    `key` String,
+    `url` String,
+    `program_id` LowCardinality(String),
+    `partner_id` String,
+    `partner_group_id` String,
+    `folder_id` String,
+    `tag_ids` Array(String),
+    `partner_tag_ids` Array(String) DEFAULT [],
+    `tenant_id` String,
+    `created_at` DateTime64(3),
+    `deleted` UInt8
+
+ENGINE "ReplacingMergeTree"
+ENGINE_SORTING_KEY "workspace_id, link_id"
+ENGINE_VER "timestamp"
+ENGINE_IS_DELETED "deleted"

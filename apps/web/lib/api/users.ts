@@ -1,0 +1,74 @@
+import { Session, hashToken } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { WorkspaceWithUsers } from "@/lib/types";
+import { sendEmail } from "@dub/email";
+import WorkspaceInvite from "@dub/email/templates/workspace-invite";
+import { TWO_WEEKS_IN_SECONDS } from "@dub/utils";
+import { WorkspaceRole } from "@prisma/client";
+import { randomBytes } from "crypto";
+import { DubApiError } from "./errors";
+
+export async function inviteUser({
+  email,
+  role = "member",
+  workspace,
+  session,
+}: {
+  email: string;
+  role?: WorkspaceRole;
+  workspace: WorkspaceWithUsers;
+  session?: Session;
+}) {
+  // same method of generating a token as next-auth
+  const token = randomBytes(32).toString("hex");
+  const expires = new Date(Date.now() + TWO_WEEKS_IN_SECONDS * 1000);
+
+  // create a workspace invite record and a verification request token that lasts for a week
+  // here we use a try catch to account for the case where the user has already been invited
+  // for which `prisma.projectInvite.create()` will throw a unique constraint error
+  try {
+    await prisma.projectInvite.create({
+      data: {
+        email,
+        role,
+        expires,
+        projectId: workspace.id,
+      },
+    });
+  } catch (error) {
+    if (error.code === "P2002") {
+      throw new DubApiError({
+        code: "conflict",
+        message: `User ${email} has already been invited to this workspace.`,
+      });
+    }
+  }
+
+  await prisma.verificationToken.create({
+    data: {
+      identifier: email,
+      token: await hashToken(token, { secret: true }),
+      expires,
+    },
+  });
+
+  const params = new URLSearchParams({
+    callbackUrl: `${process.env.NEXTAUTH_URL}/${workspace.slug}/invite`,
+    email,
+    token,
+  });
+
+  const url = `${process.env.NEXTAUTH_URL}/api/auth/callback/email?${params}`;
+
+  return await sendEmail({
+    subject: "You've been invited to join a workspace on Dub",
+    to: email,
+    react: WorkspaceInvite({
+      email,
+      url,
+      workspaceName: workspace.name,
+      workspaceUser: session?.user.name || null,
+      workspaceUserEmail: session?.user.email || null,
+    }),
+  });
+}
