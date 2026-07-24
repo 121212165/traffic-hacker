@@ -12,7 +12,7 @@ import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import LinkInspectorCard from "./card";
 
-export const runtime = "edge";
+export const runtime = "nodejs";
 
 export async function generateMetadata(props: {
   params: Promise<{ domain: string; key: string }>;
