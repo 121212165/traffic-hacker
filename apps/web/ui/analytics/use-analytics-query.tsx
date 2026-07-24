@@ -1,0 +1,125 @@
+import {
+  DUB_LINKS_ANALYTICS_INTERVAL,
+  EVENT_TYPES,
+  VALID_ANALYTICS_FILTERS,
+} from "@/lib/analytics/constants";
+import { EventType } from "@/lib/analytics/types";
+import useWorkspace from "@/lib/swr/use-workspace";
+import { useCurrentProduct } from "@dub/ui";
+import { endOfDay, startOfDay, subDays } from "date-fns";
+import { useSearchParams } from "next/navigation";
+import { useMemo } from "react";
+
+export function useAnalyticsQuery({
+  defaultEvent = "clicks",
+  domain: domainParam,
+  defaultKey,
+  defaultFolderId,
+  defaultInterval = DUB_LINKS_ANALYTICS_INTERVAL,
+}: {
+  defaultEvent?: EventType;
+  domain?: string;
+  defaultKey?: string;
+  defaultFolderId?: string;
+  defaultInterval?: string;
+} = {}) {
+  const searchParams = useSearchParams();
+  const { id: workspaceId, defaultProgramId } = useWorkspace();
+  const { product } = useCurrentProduct();
+
+  const domain = domainParam ?? searchParams?.get("domain");
+  // key can be a query param (stats pages in app) or passed as a staticKey (shared analytics dashboards)
+  const key = searchParams?.get("key") || defaultKey;
+
+  const folderId =
+    searchParams?.get("folderId") ?? defaultFolderId ?? undefined;
+  const tagId = searchParams?.get("tagId") ?? undefined;
+  const customerId = searchParams?.get("customerId") ?? undefined;
+
+  // Default to last 24 hours
+  const { start, end } = useMemo(() => {
+    const hasRange = searchParams?.has("start") && searchParams?.has("end");
+
+    return {
+      start: hasRange
+        ? startOfDay(
+            new Date(searchParams?.get("start") || subDays(new Date(), 1)),
+          )
+        : undefined,
+
+      end: hasRange
+        ? endOfDay(new Date(searchParams?.get("end") || new Date()))
+        : undefined,
+    };
+  }, [searchParams?.get("start"), searchParams?.get("end")]);
+
+  // Only set interval if start and end are not provided
+  const interval =
+    start || end ? undefined : searchParams?.get("interval") ?? defaultInterval;
+
+  const root = searchParams.get("root");
+
+  const selectedTab: EventType = useMemo(() => {
+    const event = searchParams.get("event");
+
+    return EVENT_TYPES.find((t) => t === event) ?? defaultEvent;
+  }, [searchParams.get("event"), defaultEvent]);
+
+  const queryString = useMemo(() => {
+    const availableFilterParams = VALID_ANALYTICS_FILTERS.reduce(
+      (acc, filter) => ({
+        ...acc,
+        ...(searchParams?.get(filter) && {
+          [filter]: searchParams.get(filter),
+        }),
+      }),
+      {},
+    );
+    return new URLSearchParams({
+      ...availableFilterParams,
+      event: selectedTab,
+      ...(workspaceId && { workspaceId }),
+      ...(domain && { domain }),
+      ...(key && { key }),
+      ...(start &&
+        end && { start: start.toISOString(), end: end.toISOString() }),
+      ...(interval && { interval }),
+      ...(folderId && { folderId }),
+      ...(tagId && { tagId }),
+      ...(customerId && { customerId }),
+      ...(root && { root: root.toString() }),
+      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      ...(product === "program" &&
+        defaultProgramId && { programId: defaultProgramId }),
+    }).toString();
+  }, [
+    searchParams,
+    workspaceId,
+    defaultProgramId,
+    product,
+    domain,
+    key,
+    start,
+    end,
+    interval,
+    folderId,
+    tagId,
+    root,
+    selectedTab,
+    customerId,
+  ]);
+
+  return {
+    queryString,
+    domain,
+    key,
+    start,
+    end,
+    interval,
+    folderId,
+    tagId,
+    root,
+    selectedTab,
+    customerId,
+  };
+}

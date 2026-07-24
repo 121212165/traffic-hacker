@@ -1,0 +1,43 @@
+import { openApiErrorResponses } from "@/lib/openapi/responses";
+import { eventsQuerySchema } from "@/lib/zod/schemas/analytics";
+import { clickEventResponseSchema } from "@/lib/zod/schemas/clicks";
+import { leadEventResponseSchema } from "@/lib/zod/schemas/leads";
+import { saleEventResponseSchema } from "@/lib/zod/schemas/sales";
+import { ZodOpenApiOperationObject, ZodOpenApiPathsObject } from "zod-openapi";
+import * as z from "zod/v4";
+
+export const listEvents: ZodOpenApiOperationObject = {
+  operationId: "listEvents",
+  "x-speakeasy-name-override": "list",
+  summary: "List all events",
+  description:
+    "Retrieve a paginated list of events for the authenticated workspace.",
+  requestParams: {
+    query: eventsQuerySchema,
+  },
+  responses: {
+    "200": {
+      description: "A list of events",
+      content: {
+        "application/json": {
+          schema: z.array(
+            z.discriminatedUnion("event", [
+              clickEventResponseSchema,
+              leadEventResponseSchema,
+              saleEventResponseSchema,
+            ]),
+          ),
+        },
+      },
+    },
+    ...openApiErrorResponses,
+  },
+  tags: ["Events"],
+  security: [{ token: [] }],
+};
+
+export const eventsPath: ZodOpenApiPathsObject = {
+  "/events": {
+    get: listEvents,
+  },
+};

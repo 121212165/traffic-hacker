@@ -1,0 +1,92 @@
+import { getDashboard } from "@/lib/fetchers/get-dashboard";
+import { PlanProps } from "@/lib/types";
+import Analytics from "@/ui/analytics";
+import { NewBackground } from "@/ui/shared/new-background";
+import { Footer, Logo, Nav, NavMobile } from "@dub/ui";
+import { APP_DOMAIN, constructMetadata } from "@dub/utils";
+import { Metadata } from "next";
+import { cookies } from "next/headers";
+import { notFound } from "next/navigation";
+import { Suspense } from "react";
+import DashboardPasswordForm from "./form";
+
+export async function generateMetadata(props: {
+  params: Promise<{ dashboardId: string }>;
+}): Promise<Metadata> {
+  const params = await props.params;
+  const data = await getDashboard({ id: params.dashboardId });
+
+  // if the dashboard, link, or folder doesn't exist
+  if (!data?.link && !data?.folder) {
+    return {};
+  }
+
+  return constructMetadata({
+    title: `Analytics for ${data.link ? `${data.link.domain}/${data.link.key}` : data.folder!.name}`,
+    image: `${APP_DOMAIN}/api/og/analytics?${data.link ? `linkId=${data.link.id}` : `folderId=${data.folder!.id}`}`,
+    noIndex: !data.doIndex,
+  });
+}
+
+export default async function DashboardPage(props: {
+  params: Promise<{ dashboardId: string }>;
+}) {
+  const params = await props.params;
+  const data = await getDashboard({ id: params.dashboardId });
+
+  // if the dashboard, link, or folder doesn't exist
+  if (!data?.link && !data?.folder) {
+    notFound();
+  }
+
+  if (
+    data.password &&
+    (await cookies()).get(`dub_password_${params.dashboardId}`)?.value !==
+      data.password
+  ) {
+    return (
+      <main className="flex h-screen w-screen items-center justify-center">
+        <NewBackground />
+        <div className="z-10 w-full max-w-md overflow-hidden rounded-2xl border border-neutral-100 shadow-xl">
+          <div className="flex flex-col items-center justify-center space-y-3 border-b border-neutral-200 bg-white px-4 py-6 pt-8 text-center sm:px-16">
+            <Logo />
+            <h3 className="text-xl font-semibold">Enter Password</h3>
+            <p className="text-sm text-neutral-500">
+              This dashboard is password protected. Enter the password to view
+              the dashboard.
+            </p>
+          </div>
+          <DashboardPasswordForm />
+        </div>
+      </main>
+    );
+  }
+
+  const domain = data.link?.domain || "app.dub.co";
+
+  return (
+    <div className="flex min-h-screen flex-col justify-between bg-neutral-50/80">
+      <NavMobile staticDomain={domain} />
+      <Nav staticDomain={domain} />
+      <Suspense fallback={<div className="h-screen w-full bg-neutral-50" />}>
+        <Analytics
+          dashboardProps={{
+            ...(data.link
+              ? {
+                  domain: data.link.domain,
+                  key: data.link.key,
+                  url: data.link.url,
+                }
+              : {
+                  folderId: data.folder!.id,
+                  folderName: data.folder!.name,
+                }),
+            showConversions: data.showConversions,
+            workspacePlan: data.project?.plan as PlanProps,
+          }}
+        />
+      </Suspense>
+      <Footer staticDomain={domain} />
+    </div>
+  );
+}

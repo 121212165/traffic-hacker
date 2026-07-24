@@ -1,0 +1,224 @@
+export const DATE_RANGE_INTERVAL_PRESETS = [
+  "24h",
+  "7d",
+  "30d",
+  "90d",
+  "1y",
+  "mtd",
+  "qtd",
+  "ytd",
+  "all",
+] as const;
+
+export const DUB_LINKS_ANALYTICS_INTERVAL = "24h";
+export const DUB_PARTNERS_ANALYTICS_INTERVAL = "30d";
+
+export const INTERVAL_DISPLAYS = [
+  {
+    display: "Last 24 hours",
+    value: "24h",
+    shortcut: "d",
+  },
+  {
+    display: "Last 7 days",
+    value: "7d",
+    shortcut: "w",
+  },
+  {
+    display: "Last 30 days",
+    value: "30d",
+    shortcut: "t",
+  },
+  {
+    display: "Last 3 months",
+    value: "90d",
+    shortcut: "3",
+  },
+  {
+    display: "Last 12 months",
+    value: "1y",
+    shortcut: "l",
+  },
+  {
+    display: "Month to Date",
+    value: "mtd",
+    shortcut: "m",
+  },
+  {
+    display: "Quarter to Date",
+    value: "qtd",
+    shortcut: "q",
+  },
+  {
+    display: "Year to Date",
+    value: "ytd",
+    shortcut: "y",
+  },
+  {
+    display: "All Time",
+    value: "all",
+    shortcut: "a",
+  },
+];
+
+export const VALID_ANALYTICS_ENDPOINTS = [
+  "count",
+  "timeseries",
+  "continents",
+  "regions",
+  "countries",
+  "cities",
+  "devices",
+  "browsers",
+  "os",
+  "trigger", // deprecated, but keeping for now for backwards compatibility
+  "triggers",
+  "referers",
+  "referer_urls",
+  "top_folders",
+  "top_link_tags",
+  "top_domains",
+  "top_links",
+  "top_urls",
+  "top_base_urls",
+  "top_partners",
+  "top_groups",
+  "top_partner_tags",
+  "utm_sources",
+  "utm_mediums",
+  "utm_campaigns",
+  "utm_terms",
+  "utm_contents",
+] as const;
+
+export const SINGULAR_ANALYTICS_ENDPOINTS = {
+  timeseries: "start",
+  continents: "continent",
+  regions: "region",
+  countries: "country",
+  cities: "city",
+  devices: "device",
+  browsers: "browser",
+  referers: "referer",
+  referer_urls: "refererUrl",
+  os: "os",
+  triggers: "trigger",
+  utm_sources: "utm_source",
+  utm_mediums: "utm_medium",
+  utm_campaigns: "utm_campaign",
+  utm_terms: "utm_term",
+  utm_contents: "utm_content",
+  // extra fields
+  top_folders: "folderId",
+  top_link_tags: "tagId",
+  top_domains: "domain",
+  top_links: "linkId",
+  top_urls: "url",
+  top_base_urls: "url",
+  top_groups: "groupId",
+  top_partners: "partnerId",
+  top_partner_tags: "partnerTagId",
+};
+
+export const VALID_ANALYTICS_FILTERS = [
+  "domain",
+  "key",
+  "linkId",
+  "tagId",
+  "folderId",
+  "groupId",
+  "partnerTagId",
+  "partnerId",
+  "customerId",
+  "interval",
+  "start",
+  "end",
+  // more filter facets
+  "country",
+  "city",
+  "region",
+  "continent",
+  "device",
+  "browser",
+  "os",
+  "trigger",
+  "referer",
+  "refererUrl",
+  "url",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "root",
+  "saleType",
+  // deprecated filters, but keeping for now for backwards compatibility
+  "tagIds",
+  "qr",
+];
+
+// possible analytics filters for a given linkId
+export const DIMENSIONAL_ANALYTICS_FILTERS = [
+  "country",
+  "city",
+  "region",
+  "continent",
+  "device",
+  "browser",
+  "os",
+  "trigger",
+  "referer",
+  "refererUrl",
+  "url",
+  "saleType",
+  "qr", // deprecated, but keeping for now for backwards compatibility
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_term",
+  "utm_content",
+  "query",
+];
+
+export const TRIGGER_TYPES = ["qr", "link", "pageview", "deeplink"] as const;
+
+export const EVENT_TYPES = ["clicks", "leads", "sales"] as const;
+
+export const ANALYTICS_VIEWS = ["timeseries", "funnel"] as const;
+
+export const ANALYTICS_SALE_UNIT = ["sales", "saleAmount"] as const;
+
+export const OLD_ANALYTICS_ENDPOINTS = [
+  "clicks",
+  "count",
+  "timeseries",
+  "countries",
+  "country",
+  "cities",
+  "city",
+  "devices",
+  "device",
+  "browsers",
+  "browser",
+  "os",
+  "triggers",
+  "trigger",
+  "referers",
+  "referer",
+  "top_links",
+  "top_urls",
+] as const;
+
+export const OLD_TO_NEW_ANALYTICS_ENDPOINTS = {
+  clicks: "count",
+  timeseries: "timeseries",
+  country: "countries",
+  city: "cities",
+  device: "devices",
+  browser: "browsers",
+  os: "os",
+  trigger: "triggers",
+  referer: "referers",
+  top_links: "top_links",
+  top_urls: "top_urls",
+} as const;

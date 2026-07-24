@@ -1,0 +1,19 @@
+import { get } from "@vercel/edge-config";
+
+/**
+ * Only for dub.sh domain
+ * Check if a username is reserved – should only be available on Pro+
+ */
+export const isReservedUsername = async (key: string) => {
+  if (!process.env.EDGE_CONFIG) {
+    return false;
+  }
+
+  let reservedUsernames;
+  try {
+    reservedUsernames = await get("reservedUsernames");
+  } catch (e) {
+    reservedUsernames = [];
+  }
+  return reservedUsernames.includes(key.toLowerCase());
+};

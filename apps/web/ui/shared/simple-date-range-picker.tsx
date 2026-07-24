@@ -1,0 +1,94 @@
+import {
+  DATE_RANGE_INTERVAL_PRESETS,
+  INTERVAL_DISPLAYS,
+} from "@/lib/analytics/constants";
+import { getIntervalData } from "@/lib/analytics/utils";
+import { DateRangePicker, useRouterStuff } from "@dub/ui";
+
+type Values = {
+  start?: string;
+  end?: string;
+  interval?: string;
+};
+
+export default function SimpleDateRangePicker({
+  className,
+  align = "center",
+  defaultInterval = "30d",
+  values,
+  disabled,
+  presets,
+  fromDate,
+}: {
+  className?: string;
+  align?: "start" | "center" | "end";
+  defaultInterval?: string;
+  values?: Values;
+  disabled?: boolean;
+  presets?: (typeof DATE_RANGE_INTERVAL_PRESETS)[number][];
+  fromDate?: Date;
+}) {
+  const { queryParams, searchParamsObj } = useRouterStuff();
+  const { start, end, interval } = values ?? (searchParamsObj as Values);
+
+  return (
+    <DateRangePicker
+      className={className}
+      align={align}
+      value={
+        start && end
+          ? {
+              from: new Date(start),
+              to: new Date(end),
+            }
+          : undefined
+      }
+      presetId={!start || !end ? interval ?? defaultInterval : undefined}
+      onChange={(range, preset) => {
+        if (preset) {
+          queryParams({
+            del: ["start", "end"],
+            set: {
+              interval: preset.id,
+            },
+          });
+
+          return;
+        }
+
+        // Regular range
+        if (!range || !range.from || !range.to) return;
+
+        queryParams({
+          del: "interval",
+          set: {
+            start: range.from.toISOString(),
+            end: range.to.toISOString(),
+          },
+        });
+      }}
+      presets={(presets
+        ? INTERVAL_DISPLAYS.filter(({ value }) =>
+            (presets as string[]).includes(value),
+          )
+        : INTERVAL_DISPLAYS
+      ).map(({ display, value, shortcut }) => {
+        const { startDate, endDate } = getIntervalData(value, {
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        });
+
+        return {
+          id: value,
+          label: display,
+          dateRange: {
+            from: startDate,
+            to: endDate,
+          },
+          shortcut,
+        };
+      })}
+      disabled={disabled}
+      fromDate={fromDate}
+    />
+  );
+}

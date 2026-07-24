@@ -1,0 +1,518 @@
+import { cn } from "@dub/utils";
+import { Command, useCommandState } from "cmdk";
+import { ChevronDown } from "lucide-react";
+import {
+  forwardRef,
+  HTMLProps,
+  isValidElement,
+  PropsWithChildren,
+  ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+import { AnimatedSizeContainer } from "../animated-size-container";
+import { Button, ButtonProps } from "../button";
+import { useMediaQuery } from "../hooks";
+import { Check2, CheckboxIcon, Icon, LoadingSpinner, Plus } from "../icons";
+import { Popover, PopoverProps } from "../popover";
+import { ScrollContainer } from "../scroll-container";
+import { Tooltip } from "../tooltip";
+
+export type ComboboxOption<TMeta = any> = {
+  label: string | ReactNode;
+  value: string;
+  icon?: Icon | ReactNode;
+  disabledTooltip?: ReactNode;
+  meta?: TMeta;
+  separatorAfter?: boolean;
+  first?: boolean;
+};
+
+export type ComboboxProps<
+  TMultiple extends boolean | undefined,
+  TMeta extends any,
+> = PropsWithChildren<{
+  multiple?: TMultiple;
+  selected: TMultiple extends true
+    ? ComboboxOption<TMeta>[]
+    : ComboboxOption<TMeta> | null;
+  setSelected?: TMultiple extends true
+    ? (options: ComboboxOption<TMeta>[]) => void
+    : (option: ComboboxOption<TMeta> | null) => void;
+  onSelect?: (option: ComboboxOption<TMeta>) => void;
+  maxSelected?: number;
+  options?: ComboboxOption<TMeta>[];
+  trigger?: ReactNode;
+  icon?: Icon | ReactNode;
+  placeholder?: ReactNode;
+  searchPlaceholder?: string;
+  emptyState?: ReactNode;
+  createLabel?: (search: string) => ReactNode;
+  createIcon?: Icon;
+  onCreate?: (search: string) => Promise<boolean>;
+  buttonProps?: ButtonProps;
+  labelProps?: { className?: string };
+  iconProps?: { className?: string };
+  popoverProps?: { contentClassName?: string };
+  shortcutHint?: string;
+  caret?: boolean | ReactNode;
+  side?: PopoverProps["side"];
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  onSearchChange?: (search: string) => void;
+  shouldFilter?: boolean;
+  inputRight?: ReactNode;
+  inputClassName?: string;
+  optionRight?: (option: ComboboxOption) => ReactNode;
+  optionClassName?: string;
+  optionDescription?: (option: ComboboxOption<TMeta>) => ReactNode;
+  matchTriggerWidth?: boolean;
+  hideSearch?: boolean;
+  forceDropdown?: boolean;
+}>;
+
+function isMultipleSelection(
+  multiple: boolean | undefined,
+  setSelected: any,
+): setSelected is (tags: ComboboxOption[]) => void {
+  return multiple === true;
+}
+
+export function Combobox({
+  multiple,
+  selected: selectedProp,
+  setSelected,
+  onSelect,
+  maxSelected,
+  options,
+  trigger,
+  icon: Icon,
+  placeholder = "Select...",
+  searchPlaceholder = "Search...",
+  emptyState,
+  createLabel,
+  createIcon: CreateIcon = Plus,
+  onCreate,
+  buttonProps,
+  labelProps,
+  iconProps,
+  popoverProps,
+  shortcutHint,
+  caret,
+  side,
+  open,
+  onOpenChange,
+  onSearchChange,
+  shouldFilter = true,
+  inputRight,
+  inputClassName,
+  optionRight,
+  optionClassName,
+  optionDescription,
+  matchTriggerWidth,
+  hideSearch = false,
+  forceDropdown = false,
+  children,
+}: ComboboxProps<boolean | undefined, any>) {
+  const isMultiple = isMultipleSelection(multiple, setSelected);
+
+  // Ensure selectedProp is an array
+  const selected = Array.isArray(selectedProp)
+    ? selectedProp
+    : selectedProp
+      ? [selectedProp]
+      : [];
+
+  const { isMobile } = useMediaQuery();
+
+  const [isOpenInternal, setIsOpenInternal] = useState(false);
+  const isOpen = open ?? isOpenInternal;
+  const setIsOpen = onOpenChange ?? setIsOpenInternal;
+
+  const [search, setSearch] = useState("");
+  const [shouldSortOptions, setShouldSortOptions] = useState(false);
+  const [sortedOptions, setSortedOptions] = useState<
+    ComboboxOption[] | undefined
+  >(undefined);
+  const [isCreating, setIsCreating] = useState(false);
+
+  const handleSelect = (option: ComboboxOption) => {
+    const isAlreadySelected = isMultiple
+      ? selected.some(({ value }) => value === option.value)
+      : selected.length && selected[0]?.value === option.value;
+
+    if (!isAlreadySelected && maxSelected && selected.length >= maxSelected)
+      return;
+
+    onSelect?.(option);
+
+    if (isMultiple) {
+      if (!setSelected) return;
+
+      setSelected(
+        isAlreadySelected
+          ? selected.filter(({ value }) => value !== option.value)
+          : [...selected, option],
+      );
+    } else {
+      setSelected?.(
+        selected.length && selected[0]?.value === option.value ? null : option,
+      );
+      setIsOpen(false);
+    }
+  };
+
+  const sortOptions = useCallback(
+    (options: ComboboxOption[], search: string) => {
+      return search === ""
+        ? [
+            ...options.filter(
+              (o) => o.first && !selected.some((s) => s.value === o.value),
+            ),
+            ...selected,
+            ...options.filter(
+              (o) => !o.first && !selected.some((s) => s.value === o.value),
+            ),
+          ]
+        : options;
+    },
+    [selected],
+  );
+
+  // Actually sort the options when needed
+  useEffect(() => {
+    if (shouldSortOptions) {
+      setSortedOptions(options ? sortOptions(options, search) : options);
+      setShouldSortOptions(false);
+    }
+  }, [shouldSortOptions, options, sortOptions, search]);
+
+  // Sort options when the options prop changes
+  useEffect(() => {
+    setShouldSortOptions(true);
+  }, [JSON.stringify(options?.map((o) => o.value))]);
+
+  // Reset search and sort options when the popover closes
+  useEffect(() => {
+    if (isOpen) return;
+
+    setSearch("");
+    setShouldSortOptions(true);
+  }, [isOpen]);
+
+  useEffect(() => onSearchChange?.(search), [search]);
+
+  const createOptionItem = (
+    <Command.Item
+      className={cn(
+        "text-content-default flex cursor-pointer items-center gap-3 whitespace-nowrap rounded-md px-3 py-2 text-left text-sm",
+        "data-[selected=true]:bg-bg-subtle",
+        optionClassName,
+      )}
+      onSelect={async () => {
+        setIsCreating(true);
+        const success = await onCreate?.(search);
+        if (success) {
+          setSearch("");
+          setIsOpen(false);
+        }
+        setIsCreating(false);
+      }}
+    >
+      {isCreating ? (
+        <LoadingSpinner className="size-4 shrink-0" />
+      ) : (
+        <CreateIcon className="size-4 shrink-0" />
+      )}
+      <div className="grow truncate">
+        {createLabel?.(search) ??
+          `Create ${search ? `"${search}"` : "new option..."}`}
+      </div>
+    </Command.Item>
+  );
+
+  return (
+    <Popover
+      openPopover={isOpen}
+      setOpenPopover={setIsOpen}
+      align="start"
+      side={side}
+      forceDropdown={forceDropdown}
+      onWheel={(e) => {
+        // Allows scrolling to work when the popover's in a modal
+        e.stopPropagation();
+      }}
+      popoverContentClassName={cn(
+        matchTriggerWidth && "sm:w-[var(--radix-popover-trigger-width)]",
+        popoverProps?.contentClassName,
+      )}
+      content={
+        <AnimatedSizeContainer
+          width={!isMobile && !matchTriggerWidth}
+          height
+          style={{ transform: "translateZ(0)" }} // Fixes overflow on some browsers
+          transition={{ ease: "easeInOut", duration: 0.1 }}
+          className="pointer-events-auto"
+        >
+          <Command loop shouldFilter={shouldFilter}>
+            {!hideSearch && (
+              <div className="border-border-subtle flex items-center overflow-hidden rounded-t-lg border-b">
+                <Command.Input
+                  placeholder={searchPlaceholder}
+                  value={search}
+                  onValueChange={setSearch}
+                  className={cn(
+                    "text-content-emphasis placeholder:text-content-muted grow border-0 bg-transparent py-3 pl-4 pr-2 outline-none focus:ring-0 sm:text-sm",
+                    inputClassName,
+                  )}
+                  onKeyDown={(e) => {
+                    if (
+                      e.key === "Escape" ||
+                      (e.key === "Backspace" && !search)
+                    ) {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setIsOpen(false);
+                    }
+                  }}
+                />
+                {inputRight && <div className="mr-2">{inputRight}</div>}
+                {shortcutHint && (
+                  <kbd className="border-border-subtle bg-bg-subtle text-content-subtle mr-2 hidden shrink-0 rounded border px-2 py-0.5 text-xs font-light md:block">
+                    {shortcutHint}
+                  </kbd>
+                )}
+              </div>
+            )}
+            <ScrollContainer
+              className={cn(
+                "max-h-[min(50vh,250px)]",
+                onCreate && !multiple && "max-h-[calc(min(50vh,250px)-3.5rem)]",
+              )}
+            >
+              <Command.List
+                className={cn("flex w-full min-w-[100px] flex-col gap-1 p-1")}
+              >
+                {sortedOptions !== undefined ? (
+                  <>
+                    {sortedOptions.map((option) => {
+                      const isSelected = selected.some(
+                        ({ value }) => value === option.value,
+                      );
+                      return (
+                        <Option
+                          key={`${option.label}, ${option.value}`}
+                          option={option}
+                          multiple={isMultiple}
+                          selected={isSelected}
+                          onSelect={() => handleSelect(option)}
+                          disabled={Boolean(
+                            !isSelected &&
+                              maxSelected &&
+                              selected.length >= maxSelected,
+                          )}
+                          right={optionRight?.(option)}
+                          description={optionDescription?.(option)}
+                          className={optionClassName}
+                        />
+                      );
+                    })}
+                    {/* for multiple selection, the create option item is shown at the bottom of the list */}
+                    {onCreate &&
+                      multiple &&
+                      search.length > 0 &&
+                      createOptionItem}
+                    {shouldFilter ? (
+                      <Empty className="text-content-subtle flex min-h-12 items-center justify-center text-sm">
+                        {emptyState ? emptyState : "No matches"}
+                      </Empty>
+                    ) : sortedOptions.length === 0 ? (
+                      <div className="text-content-subtle flex min-h-12 items-center justify-center text-sm">
+                        {emptyState ? emptyState : "No matches"}
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  // undefined data / explicit loading state
+                  <Command.Loading>
+                    <div className="flex h-12 items-center justify-center">
+                      <LoadingSpinner />
+                    </div>
+                  </Command.Loading>
+                )}
+              </Command.List>
+            </ScrollContainer>
+            {/* for single selection, the create option item is shown as a sticky item outside of the scroll container */}
+            {onCreate && !multiple && (
+              <div className="border-border-subtle bg-bg-default rounded-b-lg border-t p-1">
+                {createOptionItem}
+              </div>
+            )}
+          </Command>
+        </AnimatedSizeContainer>
+      }
+    >
+      {trigger ?? (
+        <Button
+          variant="secondary"
+          {...buttonProps}
+          className={cn(buttonProps?.className, "flex gap-2")}
+          textWrapperClassName={cn(
+            buttonProps?.textWrapperClassName,
+            "w-full flex items-center justify-start",
+          )}
+          text={
+            <>
+              <div
+                className={cn(
+                  "min-w-0 grow truncate text-left",
+                  labelProps?.className,
+                )}
+              >
+                {children ||
+                  selected.map((option) => option.label).join(", ") ||
+                  placeholder}
+              </div>
+              {caret &&
+                (caret === true ? (
+                  <ChevronDown
+                    className={`text-content-muted ml-1 size-4 shrink-0 transition-transform duration-75 group-data-[state=open]:rotate-180`}
+                  />
+                ) : (
+                  caret
+                ))}
+            </>
+          }
+          icon={
+            Icon ? (
+              isReactNode(Icon) ? (
+                Icon
+              ) : (
+                <Icon className={cn("size-4 shrink-0", iconProps?.className)} />
+              )
+            ) : undefined
+          }
+        />
+      )}
+    </Popover>
+  );
+}
+
+function Option({
+  option,
+  onSelect,
+  multiple,
+  selected,
+  disabled,
+  right,
+  description,
+  className,
+}: {
+  option: ComboboxOption;
+  onSelect: () => void;
+  multiple: boolean;
+  selected: boolean;
+  disabled?: boolean;
+  right?: ReactNode;
+  description?: ReactNode;
+  className?: string;
+}) {
+  const hasDescription = Boolean(description);
+  return (
+    <>
+      <DisabledTooltip disabledTooltip={option.disabledTooltip}>
+        <Command.Item
+          className={cn(
+            "flex cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left text-sm",
+            hasDescription ? "whitespace-normal py-2.5" : "whitespace-nowrap",
+            "data-[selected=true]:bg-bg-subtle",
+            Boolean(disabled || option.disabledTooltip) &&
+              "cursor-not-allowed opacity-50",
+            className,
+          )}
+          disabled={disabled || !!option.disabledTooltip}
+          onSelect={onSelect}
+          value={option.label + option?.value}
+        >
+          {multiple && (
+            <div className="text-content-default shrink-0">
+              {selected ? (
+                <CheckboxIcon
+                  variant="fill"
+                  className="text-content-default size-4"
+                />
+              ) : (
+                <CheckboxIcon className="text-content-muted size-4" />
+              )}
+            </div>
+          )}
+          <div
+            className={cn(
+              "flex min-w-0 grow items-center gap-2",
+              hasDescription && "flex-col items-start gap-0.5",
+            )}
+          >
+            {option.icon && (
+              <span className="text-content-default shrink-0">
+                {isReactNode(option.icon) ? (
+                  option.icon
+                ) : (
+                  <option.icon className="h-4 w-4" />
+                )}
+              </span>
+            )}
+            <span
+              className={cn(
+                "grow",
+                hasDescription
+                  ? "text-content-emphasis"
+                  : "text-content-default truncate",
+              )}
+            >
+              {option.label}
+            </span>
+            {hasDescription && (
+              <span className="text-content-subtle text-sm">{description}</span>
+            )}
+          </div>
+          {right}
+          {!multiple && selected && (
+            <Check2 className="text-content-default size-4 shrink-0" />
+          )}
+        </Command.Item>
+      </DisabledTooltip>
+      {option.separatorAfter && (
+        <Command.Separator className="bg-border-subtle -mx-1 my-1 h-px" />
+      )}
+    </>
+  );
+}
+
+const DisabledTooltip = ({
+  children,
+  disabledTooltip,
+}: PropsWithChildren<{ disabledTooltip: ReactNode }>) => {
+  return disabledTooltip ? (
+    <Tooltip content={disabledTooltip}>
+      <div>{children}</div>
+    </Tooltip>
+  ) : (
+    children
+  );
+};
+
+const isReactNode = (element: any): element is ReactNode =>
+  isValidElement(element);
+
+// Custom Empty component because our current cmdk version has an issue with first render (https://github.com/pacocoursey/cmdk/issues/149)
+const Empty = forwardRef<HTMLDivElement, HTMLProps<HTMLDivElement>>(
+  (props, forwardedRef) => {
+    const render = useCommandState((state) => state.filtered.count === 0);
+
+    if (!render) return null;
+    return (
+      <div ref={forwardedRef} cmdk-empty="" role="presentation" {...props} />
+    );
+  },
+);

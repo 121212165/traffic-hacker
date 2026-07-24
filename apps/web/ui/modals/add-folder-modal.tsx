@@ -1,0 +1,102 @@
+import { clientAccessCheck } from "@/lib/client-access-check";
+import useWorkspace from "@/lib/swr/use-workspace";
+import { FolderSummary } from "@/lib/types";
+import { Button, Modal, TooltipContent, useKeyboardShortcut } from "@dub/ui";
+import {
+  Dispatch,
+  SetStateAction,
+  useCallback,
+  useMemo,
+  useState,
+} from "react";
+import { AddFolderForm } from "../folders/add-folder-form";
+
+interface AddFolderModalProps {
+  showModal: boolean;
+  setShowModal: (showModal: boolean) => void;
+  onSuccess?: (folder: FolderSummary) => void;
+}
+
+const AddFolderModal = ({
+  showModal,
+  setShowModal,
+  onSuccess,
+}: AddFolderModalProps) => {
+  return (
+    <Modal showModal={showModal} setShowModal={setShowModal}>
+      <AddFolderForm
+        onSuccess={(folder) => {
+          onSuccess?.(folder);
+          setShowModal(false);
+        }}
+        onCancel={() => setShowModal(false)}
+      />
+    </Modal>
+  );
+};
+
+function AddFolderButton({
+  setShowAddFolderModal,
+}: {
+  setShowAddFolderModal: Dispatch<SetStateAction<boolean>>;
+}) {
+  const { slug, plan, role } = useWorkspace();
+
+  const permissionsError = clientAccessCheck({
+    action: "folders.write",
+    role,
+  }).error;
+
+  useKeyboardShortcut("c", () => setShowAddFolderModal(true), {
+    enabled: plan !== "free" && !permissionsError,
+  });
+
+  return (
+    <Button
+      text="Create folder"
+      shortcut="C"
+      onClick={() => setShowAddFolderModal(true)}
+      className="h-9 w-fit"
+      disabledTooltip={
+        plan === "free" ? (
+          <TooltipContent
+            title="You can only use Link Folders on a Pro plan and above. Upgrade to Pro to continue."
+            cta="Upgrade to Pro"
+            href={`/${slug}/upgrade`}
+          />
+        ) : (
+          permissionsError || undefined
+        )
+      }
+    />
+  );
+}
+
+export function useAddFolderModal({
+  onSuccess,
+}: { onSuccess?: (folder: FolderSummary) => void } = {}) {
+  const [showAddFolderModal, setShowAddFolderModal] = useState(false);
+
+  const AddFolderModalCallback = useCallback(() => {
+    return (
+      <AddFolderModal
+        showModal={showAddFolderModal}
+        setShowModal={setShowAddFolderModal}
+        onSuccess={onSuccess}
+      />
+    );
+  }, [showAddFolderModal, setShowAddFolderModal]);
+
+  const AddFolderButtonCallback = useCallback(() => {
+    return <AddFolderButton setShowAddFolderModal={setShowAddFolderModal} />;
+  }, [setShowAddFolderModal]);
+
+  return useMemo(
+    () => ({
+      setShowAddFolderModal,
+      AddFolderModal: AddFolderModalCallback,
+      AddFolderButton: AddFolderButtonCallback,
+    }),
+    [setShowAddFolderModal, AddFolderModalCallback, AddFolderButtonCallback],
+  );
+}

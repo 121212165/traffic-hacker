@@ -1,0 +1,8 @@
+# 可重新生成的视频中间产物（跑 tts_gen/screenshot/make_video 会重建）
+audio/
+shots/
+tmp/
+__pycache__/
+subtitles.srt
+
+# 保留：*.py 脚本、static/*.html 卡片、output.mp4 成片

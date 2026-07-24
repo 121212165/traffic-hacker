@@ -1,0 +1,83 @@
+import { cn } from "@dub/utils";
+import { cva, type VariantProps } from "class-variance-authority";
+import {
+  CircleCheck,
+  CircleHalfDottedCheck,
+  CircleHalfDottedClock,
+  CircleInfo,
+  CircleWarning,
+  Icon,
+} from "./icons";
+import { DynamicTooltipWrapper } from "./tooltip";
+
+const statusBadgeVariants = cva(
+  "flex gap-1.5 items-center max-w-fit max-h-fit rounded-md px-2 py-1 text-xs font-medium whitespace-nowrap",
+  {
+    variants: {
+      variant: {
+        neutral: "bg-neutral-500/[.15] text-neutral-600",
+        new: "bg-bg-info text-content-info",
+        success: "bg-bg-success text-content-success",
+        pending: "bg-bg-attention text-content-attention",
+        warning: "bg-bg-warning text-content-warning",
+        error: "bg-bg-error text-content-error",
+      },
+      size: {
+        sm: "px-1.5 py-0.5",
+        md: "px-2 py-1",
+      },
+    },
+    defaultVariants: {
+      variant: "neutral",
+    },
+  },
+);
+
+const defaultIcons = {
+  neutral: CircleInfo,
+  new: CircleHalfDottedCheck,
+  success: CircleCheck,
+  pending: CircleHalfDottedClock,
+  warning: CircleWarning,
+  error: CircleWarning,
+};
+
+interface BadgeProps
+  extends React.HTMLAttributes<HTMLSpanElement>,
+    VariantProps<typeof statusBadgeVariants> {
+  icon?: Icon | null;
+  tooltip?: string | React.ReactNode;
+}
+
+function StatusBadge({
+  className,
+  variant,
+  size,
+  icon,
+  tooltip,
+  children,
+  ...props
+}: BadgeProps) {
+  const Icon =
+    icon !== null ? icon ?? defaultIcons[variant ?? "neutral"] : null;
+
+  return (
+    <DynamicTooltipWrapper
+      tooltipProps={tooltip ? { content: tooltip } : undefined}
+    >
+      <span
+        className={cn(
+          statusBadgeVariants({ variant, size }),
+          tooltip && "cursor-help",
+          className,
+        )}
+        {...props}
+      >
+        {Icon && <Icon className="h-3 w-3 shrink-0" />}
+        {children}
+      </span>
+    </DynamicTooltipWrapper>
+  );
+}
+
+export { StatusBadge, statusBadgeVariants };

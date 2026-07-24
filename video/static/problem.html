@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:1280px; height:720px; overflow:hidden;
+    font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif; }
+  body {
+    background:radial-gradient(1200px 700px at 50% 20%, #331616 0%, #0a0e14 55%, #05070b 100%);
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    color:#e8f5ec; position:relative;
+  }
+  .grid {
+    position:absolute; inset:0;
+    background-image:linear-gradient(rgba(255,120,120,.05) 1px,transparent 1px),
+                     linear-gradient(90deg,rgba(255,120,120,.05) 1px,transparent 1px);
+    background-size:48px 48px;
+    mask-image:radial-gradient(700px 500px at 50% 40%,#000,transparent 80%);
+  }
+  .content { position:relative; z-index:2; text-align:center; width:1040px; }
+  .kicker { font:700 18px "JetBrains Mono",Consolas,monospace; letter-spacing:3px;
+    color:#ff7a7a; margin-bottom:22px; opacity:.9; }
+  .kicker::before { content:"▎"; color:#ff7a7a; }
+  h1 { font-size:56px; font-weight:800; letter-spacing:1px; line-height:1.15;
+    color:#ffffff; margin-bottom:52px; }
+  h1 .hl { color:#ff7a7a; }
+  .cards { display:flex; gap:22px; justify-content:center; }
+  .card { flex:1; padding:30px 24px; border-radius:16px;
+    background:rgba(255,255,255,.03); border:1px solid rgba(255,122,122,.22);
+    text-align:left; }
+  .icon { font-size:32px; margin-bottom:16px; }
+  .ct { font-size:22px; font-weight:700; color:#ffd9d9; margin-bottom:10px; }
+  .cd { font-size:16px; opacity:.6; line-height:1.6; font-weight:300; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="content">
+    <div class="kicker">THE PROBLEM</div>
+    <h1>投放花了钱，<span class="hl">转化却算不清</span></h1>
+    <div class="cards">
+      <div class="card">
+        <div class="icon">💸</div>
+        <div class="ct">预算在烧</div>
+        <div class="cd">多渠道同时投放，钱花出去了，却不知道哪一笔真正带来了增长。</div>
+      </div>
+      <div class="card">
+        <div class="icon">🧩</div>
+        <div class="ct">数据散落</div>
+        <div class="cd">渠道、活动、落地页各说各话，报表拼不到一起，口径永远对不上。</div>
+      </div>
+      <div class="card">
+        <div class="icon">🎲</div>
+        <div class="ct">归因靠猜</div>
+        <div class="cd">从点击到付费中间断了链路，谁的功劳全凭感觉，决策没有依据。</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,133 @@
+"use server";
+
+import { getIP } from "@/lib/api/utils/get-ip";
+import { prisma } from "@/lib/prisma";
+import { ratelimit, redis } from "@/lib/upstash";
+import { sendEmail } from "@dub/email";
+import VerifyEmail from "@dub/email/templates/verify-email";
+import { get } from "@vercel/edge-config";
+import { flattenValidationErrors } from "next-safe-action";
+import * as z from "zod/v4";
+import { generateOTP } from "../auth";
+import { EMAIL_OTP_EXPIRY_IN } from "../auth/constants";
+import { isGenericEmail } from "../is-generic-email";
+import { emailSchema, passwordSchema } from "../zod/schemas/auth";
+import { throwIfAuthenticated } from "./auth/throw-if-authenticated";
+import { actionClient } from "./safe-action";
+
+const schema = z.object({
+  email: emailSchema,
+  password: passwordSchema.optional(),
+});
+
+// Send OTP to email to verify account
+export const sendOtpAction = actionClient
+  .inputSchema(schema, {
+    handleValidationErrorsShape: async (ve) =>
+      flattenValidationErrors(ve).fieldErrors,
+  })
+  .use(throwIfAuthenticated)
+  .action(async ({ parsedInput }) => {
+    const { email } = parsedInput;
+
+    const { success } = await ratelimit(2, "1 m").limit(
+      `send-otp:${email}:${await getIP()}`,
+    );
+
+    if (!success) {
+      throw new Error("Too many requests. Please try again later.");
+    }
+
+    const isGenericEmailWithPlus = email.includes("+") && isGenericEmail(email);
+
+    const emailDomain = (email.split("@")[1] ?? "").trim().toLowerCase();
+
+    const [isDisposable, emailDomainTerms] = await Promise.all([
+      redis.sismember("disposableEmailDomains", emailDomain),
+      process.env.EDGE_CONFIG ? get("emailDomainTerms") : [],
+    ]);
+
+    const escapedDomainTerms =
+      emailDomainTerms && Array.isArray(emailDomainTerms)
+        ? emailDomainTerms
+            .map((term: string) =>
+              String(term)
+                .trim()
+                .toLowerCase()
+                .replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+            )
+            .filter((term) => term.length > 0)
+        : [];
+
+    const blacklistedEmailDomainTermsRegex =
+      escapedDomainTerms.length > 0
+        ? new RegExp(escapedDomainTerms.join("|"))
+        : null;
+
+    // if any of the flags match, run one final edge case check, before throwing an error
+    if (
+      isGenericEmailWithPlus ||
+      isDisposable ||
+      (blacklistedEmailDomainTermsRegex &&
+        blacklistedEmailDomainTermsRegex.test(emailDomain))
+    ) {
+      // edge case: the user already has a partner account on Dub with this email address,
+      // or they have an existing application for a program, we can allow them to continue
+      const [isPartnerAccount, hasExistingApplications] = await Promise.all([
+        prisma.partner.findUnique({
+          where: {
+            email,
+          },
+        }),
+        prisma.programApplication.findFirst({
+          where: {
+            email,
+          },
+        }),
+      ]);
+      if (!isPartnerAccount && !hasExistingApplications) {
+        throw new Error(
+          "Invalid email address – please use your work email instead. If you think this is a mistake, please contact us at dub.co/support",
+        );
+      }
+    }
+
+    const isExistingUser = await prisma.user.findUnique({
+      where: {
+        email,
+      },
+    });
+
+    if (isExistingUser) {
+      throw new Error(
+        "User already exists. Please login instead of requesting a new OTP.",
+      );
+    }
+
+    const code = generateOTP();
+
+    await prisma.emailVerificationToken.deleteMany({
+      where: {
+        identifier: email,
+      },
+    });
+
+    await Promise.all([
+      prisma.emailVerificationToken.create({
+        data: {
+          identifier: email,
+          token: code,
+          expires: new Date(Date.now() + EMAIL_OTP_EXPIRY_IN * 1000),
+        },
+      }),
+
+      sendEmail({
+        subject: "Dub: OTP to verify your account",
+        to: email,
+        react: VerifyEmail({
+          email,
+          code,
+        }),
+      }),
+    ]);
+  });

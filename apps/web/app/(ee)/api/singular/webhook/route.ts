@@ -1,0 +1,117 @@
+import { isLocalDev } from "@/lib/api/environment";
+import { DubApiError, handleAndReturnErrorResponse } from "@/lib/api/errors";
+import { getIP } from "@/lib/api/utils/get-ip";
+import { normalizeWorkspaceId } from "@/lib/api/workspaces/workspace-id";
+import { withAxiom } from "@/lib/axiom/server";
+import { SINGULAR_IP_RANGES } from "@/lib/integrations/singular/singular-ip-ranges";
+import { trackSingularLeadEvent } from "@/lib/integrations/singular/track-lead";
+import { trackSingularSaleEvent } from "@/lib/integrations/singular/track-sale";
+import { isIpInRange } from "@/lib/middleware/utils/is-ip-in-range";
+import { prisma } from "@/lib/prisma";
+import { getSearchParams } from "@dub/utils";
+import { NextResponse } from "next/server";
+import * as z from "zod/v4";
+
+const singularToDubEvent = {
+  activated: "lead",
+  sng_complete_registration: "lead",
+  sng_subscribe: "sale",
+  sng_ecommerce_purchase: "sale",
+  __iap__: "sale", // In-app purchase
+  "Copy GAID": "lead", // Singular Device Assist
+  "copy IDFA": "lead", // Singular Device Assist
+};
+
+const supportedEvents = Object.keys(singularToDubEvent);
+
+const querySchema = z.object({
+  dub_workspace_id: z
+    .string()
+    .min(1, "dub_workspace_id is required")
+    .describe(
+      "The Singular advertiser's workspace ID on Dub (see https://d.to/id).",
+    )
+    .transform((v) => normalizeWorkspaceId(v)),
+});
+
+// GET /api/singular/webhook – listen to Postback events from Singular
+export const GET = withAxiom(async (req) => {
+  try {
+    if (!isLocalDev) {
+      const ip = await getIP();
+      const isAllowed = SINGULAR_IP_RANGES.some((range) =>
+        isIpInRange(ip, range),
+      );
+
+      if (!isAllowed) {
+        throw new DubApiError({
+          code: "forbidden",
+          message: `IP address ${ip} is not allowed.`,
+        });
+      }
+    }
+
+    const queryParams = getSearchParams(req.url);
+
+    const { dub_workspace_id: workspaceId } = querySchema.parse(queryParams);
+
+    const { event_name: eventName } = queryParams;
+
+    if (!eventName) {
+      throw new DubApiError({
+        code: "bad_request",
+        message: "event_name is required.",
+      });
+    }
+
+    if (!supportedEvents.includes(eventName)) {
+      console.error(
+        `Event ${eventName} is not supported by Singular <> Dub integration.`,
+      );
+
+      return NextResponse.json("OK");
+    }
+
+    const workspace = await prisma.project.findUnique({
+      where: {
+        id: workspaceId,
+      },
+      select: {
+        id: true,
+        stripeConnectId: true,
+        webhookEnabled: true,
+      },
+    });
+
+    if (!workspace) {
+      throw new DubApiError({
+        code: "not_found",
+        message: `Workspace ${workspaceId} not found.`,
+      });
+    }
+
+    const dubEvent = singularToDubEvent[eventName];
+
+    delete queryParams.dub_workspace_id;
+
+    if (dubEvent === "lead") {
+      await trackSingularLeadEvent({
+        queryParams,
+        workspace,
+      });
+    } else if (dubEvent === "sale") {
+      await trackSingularSaleEvent({
+        queryParams,
+        workspace,
+      });
+    }
+
+    return NextResponse.json("OK");
+  } catch (error) {
+    return handleAndReturnErrorResponse(error);
+  }
+});
+
+export const HEAD = () => {
+  return new Response("OK");
+};
