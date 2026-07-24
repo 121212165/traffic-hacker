@@ -47,6 +47,10 @@ module.exports = withPlausibleProxy({
     // White-label fork deploy: reduce webpack peak memory to avoid OOM SIGKILL
     // on the constrained (8 GB) Vercel build container during `next build`.
     webpackMemoryOptimizations: true,
+    // Serialize static page generation to a single worker so the export phase
+    // (~300 pages) stays within the build container's memory limit.
+    cpus: 1,
+    workerThreads: false,
     optimizePackageImports: [
       "@dub/email",
       "@dub/ui",
