@@ -7,8 +7,6 @@ import {
 import { getSearchParams, isIframeable } from "@dub/utils";
 import { NextRequest, NextResponse } from "next/server";
 
-export const runtime = "nodejs";
-
 export async function GET(req: NextRequest) {
   try {
     const { url, domain } = getUrlQuerySchema

@@ -6,10 +6,6 @@ import { workspaceIdSchema } from "@/lib/zod/schemas/workspaces";
 import { getSearchParams } from "@dub/utils";
 import { NextRequest, NextResponse } from "next/server";
 
-// White-label fork deploy: run on Node.js instead of Edge so the bundle
-// (1.26 MB) is not rejected by the Edge Function 1 MB size limit.
-export const runtime = "nodejs";
-
 // GET /api/links/exists – run keyChecks on the key
 export const GET = async (req: NextRequest) => {
   try {
