@@ -10,7 +10,7 @@ import { addDays, startOfDay } from "date-fns";
 import * as z from "zod/v4";
 import { logAndRespond } from "../../utils";
 
-export const maxDuration = 600;
+export const maxDuration = 300;
 
 export const dynamic = "force-dynamic";
 
