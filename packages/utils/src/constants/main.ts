@@ -1,6 +1,8 @@
 export const SHORT_DOMAIN = "dub.sh";
 
 export const APP_HOSTNAMES = new Set([
+  "traffic-hacker-l-jhs-projects.vercel.app",
+  "traffic-hacker-git-main-l-jhs-projects.vercel.app",
   "app.dub.co",
   "preview.dub.co",
   "localhost:8888",
@@ -9,14 +11,14 @@ export const APP_HOSTNAMES = new Set([
 
 export const APP_DOMAIN =
   process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
-    ? "https://app.dub.co"
+    ? "https://traffic-hacker-l-jhs-projects.vercel.app"
     : process.env.NEXT_PUBLIC_VERCEL_ENV === "preview"
       ? "https://preview.dub.co"
       : "http://localhost:8888";
 
 export const APP_DOMAIN_WITH_NGROK =
   process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
-    ? "https://app.dub.co"
+    ? "https://traffic-hacker-l-jhs-projects.vercel.app"
     : process.env.NEXT_PUBLIC_VERCEL_ENV === "preview"
       ? process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
