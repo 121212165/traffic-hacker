@@ -40,7 +40,15 @@ export default async function middleware(req: NextRequest, ev: NextFetchEvent) {
   ev.waitUntil(logger.flush());
 
   // for App
-  if (APP_HOSTNAMES.has(domain)) {
+  // ModelScope studio deploy: the single *.ms.show hostname serves the app
+  // dashboard; short links on that same hostname use the /r/<key> path escape
+  // so both the dashboard and link redirects work on one domain.
+  if (APP_HOSTNAMES.has(domain) || domain.endsWith(".ms.show")) {
+    if (path === "/r" || path.startsWith("/r/")) {
+      const url = req.nextUrl.clone();
+      url.pathname = path.replace(/^\/r\/?/, "/");
+      return LinkMiddleware(new NextRequest(url, req), ev);
+    }
     return AppMiddleware(req);
   }
 

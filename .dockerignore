@@ -1,0 +1,27 @@
+# Keep the Docker build context small: the monorepo carries multi-GB
+# node_modules plus local logs/videos that the image build must not see.
+node_modules
+**/node_modules
+.git
+.next
+**/.next
+.turbo
+**/.turbo
+.vercel
+**/.vercel
+
+# local artifacts / logs / media (not needed in the image)
+video
+*.log
+**/*.log
+screenshot_*.jpg
+screenshot_*.png
+
+# env & secrets are never baked into the image
+.env
+.env.*
+**/.env
+**/.env.*
+
+Dockerfile
+.dockerignore
