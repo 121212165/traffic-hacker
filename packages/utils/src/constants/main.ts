@@ -1,6 +1,14 @@
 export const SHORT_DOMAIN = "dub.sh";
 
+// Extra app hostnames injected at build/deploy time (e.g. ModelScope studio
+// domain), comma-separated. Keeps the white-label fork portable across hosts.
+const ENV_APP_HOSTNAMES = (process.env.NEXT_PUBLIC_APP_HOSTNAMES || "")
+  .split(",")
+  .map((h) => h.trim().toLowerCase())
+  .filter(Boolean);
+
 export const APP_HOSTNAMES = new Set([
+  ...ENV_APP_HOSTNAMES,
   "traffic-hacker-l-jhs-projects.vercel.app",
   "traffic-hacker-git-main-l-jhs-projects.vercel.app",
   "app.dub.co",
@@ -10,20 +18,22 @@ export const APP_HOSTNAMES = new Set([
 ]);
 
 export const APP_DOMAIN =
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
+  process.env.NEXT_PUBLIC_APP_DOMAIN ||
+  (process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
     ? "https://traffic-hacker-l-jhs-projects.vercel.app"
     : process.env.NEXT_PUBLIC_VERCEL_ENV === "preview"
       ? "https://preview.dub.co"
-      : "http://localhost:8888";
+      : "http://localhost:8888");
 
 export const APP_DOMAIN_WITH_NGROK =
-  process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
+  process.env.NEXT_PUBLIC_APP_DOMAIN ||
+  (process.env.NEXT_PUBLIC_VERCEL_ENV === "production"
     ? "https://traffic-hacker-l-jhs-projects.vercel.app"
     : process.env.NEXT_PUBLIC_VERCEL_ENV === "preview"
       ? process.env.VERCEL_URL
         ? `https://${process.env.VERCEL_URL}`
         : "https://preview.dub.co"
-      : process.env.NEXT_PUBLIC_NGROK_URL || "http://localhost:8888";
+      : process.env.NEXT_PUBLIC_NGROK_URL || "http://localhost:8888");
 
 export const API_HOSTNAMES = new Set([
   "api.dub.co",

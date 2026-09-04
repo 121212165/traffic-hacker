@@ -1,0 +1,36 @@
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 3.37kB 0.0s done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#2 DONE 2.9s
+
+#3 docker-image://docker.io/docker/dockerfile:1@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/node:20-alpine
+#4 DONE 0.3s
+
+#5 [internal] load metadata for docker.io/library/golang:1.23-alpine
+#5 DONE 4.6s
+
+#6 [internal] load metadata for docker.io/hiett/serverless-redis-http:latest
+#6 ERROR: failed to copy: httpReadSeeker: failed open: unexpected status from GET request to https://docker.m.daocloud.io/v2/hiett/serverless-redis-http/blobs/sha256:342be0a314bf3cc5a724a2c44a06294f2422a1cba65c96e5e1b7a30b685031f2?ns=docker.io: 403 Forbidden
+denied: 馃毇 馃憖-> https://github.com/DaoCloud/public-image-mirror/issues/2328 馃敆 杩欓暅鍍忎笉鍦ㄧ櫧鍚嶅崟. this image is not in the allowlist.
+------
+ > [internal] load metadata for docker.io/hiett/serverless-redis-http:latest:
+------
+Dockerfile:19
+--------------------
+  17 |     
+  18 |     # ---- Stage 2: SRH (Upstash-compatible Redis REST proxy, Elixir/alpine) ------
+  19 | >>> FROM hiett/serverless-redis-http:latest AS srh
+  20 |     
+  21 |     # ---- Stage 3: build the Next.js standalone bundle ---------------------------
+--------------------
+ERROR: failed to build: failed to solve: failed to copy: httpReadSeeker: failed open: unexpected status from GET request to https://docker.m.daocloud.io/v2/hiett/serverless-redis-http/blobs/sha256:342be0a314bf3cc5a724a2c44a06294f2422a1cba65c96e5e1b7a30b685031f2?ns=docker.io: 403 Forbidden
+denied: 馃毇 馃憖-> https://github.com/DaoCloud/public-image-mirror/issues/2328 馃敆 杩欓暅鍍忎笉鍦ㄧ櫧鍚嶅崟. this image is not in the allowlist.
+
+View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/kyrdutqy5km9glui5338igbky

@@ -379,11 +379,16 @@ export const authOptions: NextAuthOptions = {
       name: `${VERCEL_DEPLOYMENT ? "__Secure-" : ""}next-auth.session-token`,
       options: {
         httpOnly: true,
-        sameSite: "lax",
+        // ModelScope studio renders the app inside an iframe on modelscope.cn,
+        // which makes our session cookie third-party there. SameSite=None +
+        // Secure is required for the cookie to be sent in that context.
+        sameSite:
+          process.env.DEPLOY_TARGET === "modelscope" ? "none" : "lax",
         path: "/",
         // When working on localhost, the cookie domain must be omitted entirely (https://stackoverflow.com/a/1188145)
         domain: VERCEL_DEPLOYMENT ? ".dub.co" : undefined,
-        secure: VERCEL_DEPLOYMENT,
+        secure:
+          VERCEL_DEPLOYMENT || process.env.DEPLOY_TARGET === "modelscope",
       },
     },
   },

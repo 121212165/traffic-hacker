@@ -1,4 +1,8 @@
 const { withPlausibleProxy } = require("next-plausible");
+const path = require("path");
+
+// ModelScope studio (Docker) deploy: self-contained container build
+const isModelScope = process.env.DEPLOY_TARGET === "modelscope";
 
 // Suppress specific external package warnings
 const originalConsoleWarn = console.warn;
@@ -24,6 +28,12 @@ module.exports = withPlausibleProxy({
   apiPath: "/_proxy/plausible/event",
 })({
   reactStrictMode: false,
+  // ModelScope Docker deploy: emit a self-contained standalone server so the
+  // runtime image doesn't need the full monorepo node_modules.
+  ...(isModelScope && {
+    output: "standalone",
+    outputFileTracingRoot: path.join(__dirname, "../../"),
+  }),
   typescript: {
     // White-label fork deploy: skip type-check (flaky duplicate @types/react ref error)
     ignoreBuildErrors: true,
@@ -145,10 +155,18 @@ module.exports = withPlausibleProxy({
             key: "X-DNS-Prefetch-Control",
             value: "on",
           },
-          {
-            key: "X-Frame-Options",
-            value: "DENY",
-          },
+          // ModelScope embeds the studio app in an iframe on modelscope.cn,
+          // so X-Frame-Options: DENY would blank the page there.
+          isModelScope
+            ? {
+                key: "Content-Security-Policy",
+                value:
+                  "frame-ancestors 'self' https://*.modelscope.cn https://*.ms.show",
+              }
+            : {
+                key: "X-Frame-Options",
+                value: "DENY",
+              },
         ],
       },
       {
