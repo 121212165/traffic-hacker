@@ -86,7 +86,7 @@
     "concurrently": "^8.0.1",
     "date-fns": "^4.1.0",
     "dub": "^0.72.0",
-    "fast-xml-parser": "^5.0.6",
+    "fast-xml-parser": "^5.12.0",
     "file-type": "^20.4.1",
     "frimousse": "^0.3.0",
     "fuse.js": "^6.6.2",
